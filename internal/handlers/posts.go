@@ -73,7 +73,7 @@ func PostGET(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Fetch the post from database
-		post, err := database.GetPostByID(db, postID)
+		post, comments, err := database.GetPostByID(db, postID)
 		if err == sql.ErrNoRows {
 			// Post not found - return 404
 			http.NotFound(w, r)
@@ -89,6 +89,12 @@ func PostGET(db *sql.DB) http.HandlerFunc {
 		// Again for now we just print it
 		fmt.Fprintf(w, "Post: %s\nBy: %s\nContent: %s\nLikes: %d\nDislikes: %d\nCategories: %v\nLoggedIn: %v UserID: %d\n",
 			post.Title, post.Username, post.Content, post.LikeCount, post.DislikeCount, post.Categories, loggedIn, userID)
+
+		fmt.Fprintf(w, "Comments (%d):\n", len(comments))
+		for _, c := range comments {
+			fmt.Fprintf(w, "  [%s]: %s (👍%d 👎%d)\n", c.Username, c.Content, c.LikeCount, c.DislikeCount)
+		}
+		fmt.Fprintf(w, "\nLoggedIn: %v | UserID: %d\n", loggedIn, userID)
 	}
 }
 

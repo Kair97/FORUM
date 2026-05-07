@@ -60,9 +60,9 @@ func Init(dbPath string, schemaPath string) (*sql.DB, error) {
 
 }
 
-// ------------------------
+// -----------------------------------------------------------
 // CATEGORIES QUERIES
-// ------------------------
+// -----------------------------------------------------------
 // GetAllCategories returns every category row
 func GetAllCategories(db *sql.DB) ([]models.Category, error) {
 	rows, err := db.Query("SELECT id, name FROM categories ORDER BY name")
@@ -129,9 +129,9 @@ func getCategoriesForPost(db *sql.DB, postID int64) ([]string, error) {
 	return names, nil
 }
 
-// ------------------------
+// -----------------------------------------------------------
 // POST QUERIES
-// ------------------------
+// -----------------------------------------------------------
 
 // CreatePost inserts a new post and links it to its categories
 // Uses a transaction - either both the post INSERT and the category
@@ -249,9 +249,9 @@ func GetAllPosts(db *sql.DB) ([]models.Post, error) {
 	return posts, nil
 }
 
-// GetPostByID returns a single post by its ID with full details.
+// GetPostByID returns a single post by its ID with full details and comments.
 // Returns sql.ErrNoRows if the post does not exist.
-func GetPostByID(db *sql.DB, postID int64) (models.Post, error) {
+func GetPostByID(db *sql.DB, postID int64) (models.Post, []models.Comment, error) {
 	var p models.Post
 
 	err := db.QueryRow(`
@@ -286,19 +286,108 @@ func GetPostByID(db *sql.DB, postID int64) (models.Post, error) {
 	if err == sql.ErrNoRows {
 		// Return the sentinel error directly so the handler can
 		// distinguish "not found" from a real database failure
-		return p, sql.ErrNoRows
+		return p, nil, sql.ErrNoRows
 	}
 
 	if err != nil {
-		return p, fmt.Errorf("failed to query post: %w", err)
+		return p, nil, fmt.Errorf("failed to query post: %w", err)
 	}
 
 	// Fetch categories for this post.
 	categories, err := getCategoriesForPost(db, p.ID)
 	if err != nil {
-		return p, fmt.Errorf("failed to get categories: %w", err)
+		return p, nil, fmt.Errorf("failed to get categories: %w", err)
 	}
 	p.Categories = categories
 
-	return p, nil
+	// Fetch comments for this post.
+	comments, err := GetCommentsByPostID(db, postID)
+	if err != nil {
+		return p, nil, fmt.Errorf("failed to get comments: %w", err)
+	}
+
+	return p, comments, nil
+}
+
+// -----------------------------------------------------------
+// COMMENT QUERIES
+// -----------------------------------------------------------
+
+// CreateComment inserts a new comment on a post.
+// Returns the new comment's ID
+func CreateComment(db *sql.DB, postID, userID int64, content string) (int64, error) {
+	result, err := db.Exec(
+		`INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)`,
+		postID, userID, content,
+	)
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert comment: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get comment ID: %w", err)
+	}
+
+	return id, nil
+}
+
+// GetCommentsByPostID returns all comments for a given post,
+// ordered oldest first so conversation reads top to bottom.
+// Each comment includes the author's username and like/dislike counts.
+func GetCommentsByPostID(db *sql.DB, postID int64) ([]models.Comment, error) {
+	rows, err := db.Query(
+		`SELECT 
+			c.id,
+			c.post_id,
+			c.user_id,
+			u.username,
+			c.content, 
+			c.created_at,
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_counts
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_counts
+		FROM comments c
+		JOIN users u ON c.user_id = u.id
+		-- LEFT JOIN so comments with zero likes still appear
+		LEFT JOIN likes l ON c.id = l.comment_id
+		WHERE c.post_id = ?
+		GROUP BY c.id
+		ORDER BY c.created_at ASC`,
+		postID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query comments: %w", err)
+	}
+
+	defer rows.Close()
+
+	var comments []models.Comment
+
+	for rows.Next() {
+		var c models.Comment
+
+		err := rows.Scan(
+			&c.ID,
+			&c.PostID,
+			&c.UserID,
+			&c.Username,
+			&c.Content,
+			&c, c.CreatedAt,
+			&c.LikeCount,
+			&c.DislikeCount,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan comment: %w", err)
+		}
+
+		comments = append(comments, c)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("comments row error: %w", err)
+	}
+
+	return comments, nil
 }

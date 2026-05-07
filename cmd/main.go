@@ -85,6 +85,15 @@ func main() {
 		}
 	})
 
+	// Create comment - requires auth
+	http.HandleFunc("/comment/create", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAuth(handlers.CreateCommentPOST(db), db)(w, r)
+	})
+
 	http.HandleFunc("/protected", func(w http.ResponseWriter, r *http.Request) {
 		middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 			userID, _ := utils.GetUserID(r)
