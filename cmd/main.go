@@ -5,8 +5,11 @@
 package main
 
 import (
+	"fmt"
 	"forum/internal/database"
 	"forum/internal/handlers"
+	"forum/internal/middleware"
+	"forum/internal/utils"
 	"log"
 	"net/http"
 )
@@ -54,7 +57,21 @@ func main() {
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Forum is alive. Database connected"))
+		middleware.OptionalAuth(func(w http.ResponseWriter, r *http.Request) {
+			userID, ok := utils.GetUserID(r)
+			if ok {
+				fmt.Fprintf(w, "Welcome back! You are logged in as user ID: %d", userID)
+			} else {
+				fmt.Fprintf(w, "Welcome, guest! Please login or register.")
+			}
+		}, db)(w, r)
+	})
+
+	http.HandleFunc("/protected", func(w http.ResponseWriter, r *http.Request) {
+		middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+			userID, _ := utils.GetUserID(r)
+			fmt.Fprintf(w, "You reached a protected route. Your user ID is: %d", userID)
+		}, db)(w, r)
 	})
 
 	log.Println("Server starting on http://localhost:8080")
