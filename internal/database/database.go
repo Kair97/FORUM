@@ -65,7 +65,7 @@ func Init(dbPath string, schemaPath string) (*sql.DB, error) {
 // ------------------------
 // GetAllCategories returns every category row
 func GetAllCategories(db *sql.DB) ([]models.Category, error) {
-	rows, err := db.Query("SELECT id, name, FROM categories ORDER BY name")
+	rows, err := db.Query("SELECT id, name FROM categories ORDER BY name")
 	if err != nil {
 		return nil, fmt.Errorf("failed to query categories: %w", err)
 	}
@@ -77,7 +77,7 @@ func GetAllCategories(db *sql.DB) ([]models.Category, error) {
 	var categories []models.Category
 
 	// rows.Next() advances the cursor one row at a time.
-	// It returns false when there are no more rows or an error occupied.
+	// It returns false when there are no more rows or an error occurred.
 	for rows.Next() {
 		var c models.Category
 		if err := rows.Scan(&c.ID, &c.Name); err != nil {
@@ -86,7 +86,7 @@ func GetAllCategories(db *sql.DB) ([]models.Category, error) {
 		categories = append(categories, c)
 	}
 
-	// rows.Err() returns any error that occured during the iteration.
+	// rows.Err() returns any error that occurred during the iteration.
 	// We always need to check this afte a rows.Next() loop.
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("category rows error: %w", err)
@@ -192,14 +192,14 @@ func GetAllPosts(db *sql.DB) ([]models.Post, error) {
 		SELECT 
 			p.id,
 			p.user_id, 
-			p.username, 
+			u.username, 
 			p.title,
 			p.content,
 			p.image_path,
 			p.created_at,
 			-- COUNT with FILTER counts only rows where condition is true 
-			COUNT(CASE WHEN l.is_like = 1 THEN END) AS like_count,
-			COUNT(CASE WHEN l.islike = 0 THEN END) AS dislike_count
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_count, 
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_count
 		FROM posts p
 		-- JOIN users to get the author's username 
 		JOIN users u ON p.user_id = u.id

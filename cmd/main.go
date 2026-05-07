@@ -25,6 +25,7 @@ func main() {
 
 	log.Println("Database initialized successfully")
 
+	// ----------- Auth routes -----------------------------------------------
 	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -56,15 +57,32 @@ func main() {
 		}
 	})
 
+	// ----------- Post routes -----------------------------------------------
+
+	// Homepage — optional auth (guests can view)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		middleware.OptionalAuth(func(w http.ResponseWriter, r *http.Request) {
-			userID, ok := utils.GetUserID(r)
-			if ok {
-				fmt.Fprintf(w, "Welcome back! You are logged in as user ID: %d", userID)
-			} else {
-				fmt.Fprintf(w, "Welcome, guest! Please login or register.")
-			}
-		}, db)(w, r)
+		middleware.OptionalAuth(handlers.IndexGET(db), db)(w, r)
+	})
+
+	// Single post page - optional auth (guests can view)
+	http.HandleFunc("/post", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.OptionalAuth(handlers.PostGET(db), db)(w, r)
+	})
+
+	// Create post - Require auth
+	http.HandleFunc("/post/create", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			middleware.RequireAuth(handlers.CreatePostGET(db), db)(w, r)
+		case http.MethodPost:
+			middleware.RequireAuth(handlers.CreatePostPOST(db), db)(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
 	})
 
 	http.HandleFunc("/protected", func(w http.ResponseWriter, r *http.Request) {
