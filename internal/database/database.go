@@ -213,40 +213,7 @@ func GetAllPosts(db *sql.DB) ([]models.Post, error) {
 	}
 	defer rows.Close()
 
-	var posts []models.Post
-	for rows.Next() {
-		var p models.Post
-
-		err := rows.Scan(
-			&p.ID,
-			&p.UserID,
-			&p.Username,
-			&p.Title,
-			&p.Content,
-			&p.ImagePath,
-			&p.CreatedAt,
-			&p.LikeCount,
-			&p.DislikeCount,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan the post: %w", err)
-		}
-
-		// Fetch categories for this post seperately.
-		categories, err := getCategoriesForPost(db, p.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get categories for post %d: %w", p.ID, err)
-		}
-		p.Categories = categories
-
-		posts = append(posts, p)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("post rows error: %w", err)
-	}
-
-	return posts, nil
+	return scanPosts(db, rows)
 }
 
 // GetPostByID returns a single post by its ID with full details and comments.
@@ -520,4 +487,149 @@ func GetUserLikeStatus(db *sql.DB, userID, targetID int64, targetType string) (b
 
 	// exists=true, isLike=whatever they voted
 	return true, isLike, nil
+}
+
+// -----------------------------------------------------------
+// FILTER QUERIES
+// -----------------------------------------------------------
+
+// GetPostsByCategory returns all posts belonging to a specific category.
+// Available to all even to guests.
+func GetPostsByCategory(db *sql.DB, categoryID int64) ([]models.Post, error) {
+	rows, err := db.Query(`
+		SELECT 
+			p.id,
+			p.user_id,
+			u.username,
+			p.title,
+			p.content,
+			p.image_path,
+			p.created_at,
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_count,
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_count
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		-- JOIN post_categories to filter by category
+		JOIN post_categories pc ON p.id = pc.post_id
+		LEFT JOIN likes l ON p.id = l.post_id
+		WHERE pc.category_id = ? 
+		GROUP BY p.id 
+		ORDER BY p.created_at DESC`,
+		categoryID)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query posts by category: %w", err)
+	}
+
+	defer rows.Close()
+
+	return scanPosts(db, rows)
+}
+
+// GetPostsByUser returns all posts created by a specific user.
+// Used for the "my posts" filter - logged-in users only.
+func GetPostsByUser(db *sql.DB, userID int64) ([]models.Post, error) {
+	rows, err := db.Query(`
+		SELECT 
+			p.id,
+			p.user_id,
+			u.username, 
+			p.title,
+			p.content,
+			p.image_path,
+			p.created_at,
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_count,
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_count
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		LEFT JOIN likes l ON p.id = l.post_id
+		WHERE p.user_id = ?
+		GROUP BY p.id
+		ORDER BY p.created_at DESC`,
+		userID,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query posts by user: %w", err)
+	}
+
+	defer rows.Close()
+
+	return scanPosts(db, rows)
+}
+
+// GetPostsLikedByUser returns all posts that a specific user has liked.
+// User for the "liked posts" filter - logged-in users only.
+func GetPostsLikedByUser(db *sql.DB, userID int64) ([]models.Post, error) {
+	rows, err := db.Query(`
+		SELECT 
+			p.id,
+			p.user_id,
+			u.username,
+			p.title,
+			p.content,
+			p.image_path,
+			p.created_at,
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_counts,
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_counts
+		FROM posts p 
+		JOIN users u ON p.user_id = u.id
+		LEFT JOIN likes l ON p.id = l.post_id
+		-- Subquery: only include posts where this user has a like (is_like=1)row
+		WHERE p.id IN (
+			SELECT post_id FROM likes
+			WHERE user_id = ? AND l.is_like = 1 AND post_id IS NOT NULL
+		)
+		GROUP BY p.id
+		ORDER BY p.created_at DESC`,
+		userID,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query liked posts: %w", err)
+	}
+
+	defer rows.Close()
+
+	return scanPosts(db, rows)
+}
+
+// scanPosts is a shared helper that scans a *sql.Rows result into []models.Post.
+// All four post queries (GetAllPosts, GetPostsByCategory, GetPostsByUser,
+// GetPostsLikedByUser) return the same columns in the same order —
+// so we extract the scanning logic once here instead of duplicating it four times.
+func scanPosts(db *sql.DB, rows *sql.Rows) ([]models.Post, error) {
+	var posts []models.Post
+
+	for rows.Next() {
+		var p models.Post
+		err := rows.Scan(
+			&p.ID,
+			&p.UserID,
+			&p.Username,
+			&p.Title,
+			&p.Content,
+			&p.ImagePath,
+			&p.CreatedAt,
+			&p.LikeCount,
+			&p.DislikeCount,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan post: %w", err)
+		}
+
+		categories, err := getCategoriesForPost(db, p.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get categories for post %d: %w", p.ID, err)
+		}
+
+		p.Categories = categories
+		posts = append(posts, p)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("posts rows error: %w", err)
+	}
+
+	return posts, nil
 }

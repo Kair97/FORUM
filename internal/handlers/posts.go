@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"forum/internal/database"
 	"forum/internal/middleware"
+	"forum/internal/models"
 	"forum/internal/utils"
 	"net/http"
 	"strconv"
@@ -16,6 +17,14 @@ import (
 
 // IndexGET serves the homepage showing all posts.
 // Available to all users - guests and logged-in users.
+
+// IndexGET now serves the homepage with optional filtering.
+// Filter logic:
+//
+//	/?category_id=N  → posts in that category  (all users)
+//	/?filter=created → posts by logged-in user  (auth required)
+//	/?filter=liked   → posts liked by user      (auth required)
+//	/                → all posts                (all users)
 func IndexGET(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// The default ServeMux routes everything that does not match
@@ -25,29 +34,83 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Fetch all posts from the database.
-		posts, err := database.GetAllPosts(db)
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
+		// Read the filter parameters from the URL
+		categoryIDStr := r.URL.Query().Get("category_id")
+		filter := r.URL.Query().Get("filter")
 
-		// Fetch all categories for the filter sidebar.
+		// Read login status — needed for auth-only filters.
+		userID, loggedIn := utils.GetUserID(r)
+
 		categories, err := database.GetAllCategories(db)
 		if err != nil {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
-		// Check if user is logged in - used by the template to show/hide buttons
-		userID, loggedIn := utils.GetUserID(r)
+		var posts []models.Post
 
-		// For now lets show this after we will finish this part
-		fmt.Fprintf(w, "Posts: %d | Categories: %d | LoggedIn: %v | UserID: %d\n", len(posts), len(categories), loggedIn, userID)
+		switch {
+		case categoryIDStr != "":
+			// Filter by category - available to all users.
+			categoryID, err := strconv.ParseInt(categoryIDStr, 10, 64)
+			if err != nil {
+				http.Error(w, "Invalid Category ID", http.StatusBadRequest)
+				return
+			}
 
+			posts, err = database.GetPostsByCategory(db, categoryID)
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+		case filter == "created":
+			// Filter by posts created by the logged-in user.
+			// Guests are redirected to login.
+			if !loggedIn {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+			posts, err = database.GetPostsByUser(db, userID)
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+		case filter == "liked":
+			// Filter by posts liked by the logged-in user.
+			// Guests are redirected to login.
+			if !loggedIn {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+			posts, err = database.GetPostsLikedByUser(db, userID)
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+		default:
+			// No filter so all posts are showed
+			posts, err = database.GetAllPosts(db)
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+
+			}
+		}
+
+		// For now print plain text — templates come in Phase 8.
+		fmt.Fprintf(w, "Filter: category_id=%s filter=%s | LoggedIn: %v\n\n",
+			categoryIDStr, filter, loggedIn)
+
+		fmt.Fprintf(w, "Categories:\n")
+		for _, c := range categories {
+			fmt.Fprintf(w, "  [%d] %s\n", c.ID, c.Name)
+		}
+
+		fmt.Fprintf(w, "\nPosts (%d):\n", len(posts))
 		for _, p := range posts {
-			fmt.Fprintf(w, "- [%d] %s by %s | 👍 %d 👎 %d | Categories: %v\n",
-				p.ID, p.Title, p.Username, p.LikeCount, p.DislikeCount, p.Categories)
+			fmt.Fprintf(w, "  [%d] %s by %s | 👍%d 👎%d | %v\n",
+				p.ID, p.Title, p.Username,
+				p.LikeCount, p.DislikeCount, p.Categories)
 		}
 	}
 }
