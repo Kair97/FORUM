@@ -94,6 +94,15 @@ func main() {
 		middleware.RequireAuth(handlers.CreateCommentPOST(db), db)(w, r)
 	})
 
+	// Like/Dislike - requires auth
+	http.HandleFunc("/like", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAuth(handlers.ToggleLikePOST(db), db)(w, r)
+	})
+
 	http.HandleFunc("/protected", func(w http.ResponseWriter, r *http.Request) {
 		middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 			userID, _ := utils.GetUserID(r)

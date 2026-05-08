@@ -345,7 +345,7 @@ func GetCommentsByPostID(db *sql.DB, postID int64) ([]models.Comment, error) {
 			u.username,
 			c.content, 
 			c.created_at,
-			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_counts
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_counts,
 			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_counts
 		FROM comments c
 		JOIN users u ON c.user_id = u.id
@@ -373,7 +373,7 @@ func GetCommentsByPostID(db *sql.DB, postID int64) ([]models.Comment, error) {
 			&c.UserID,
 			&c.Username,
 			&c.Content,
-			&c, c.CreatedAt,
+			&c.CreatedAt,
 			&c.LikeCount,
 			&c.DislikeCount,
 		)
@@ -390,4 +390,134 @@ func GetCommentsByPostID(db *sql.DB, postID int64) ([]models.Comment, error) {
 	}
 
 	return comments, nil
+}
+
+// -----------------------------------------------------------
+// LIKE QUERIES
+// -----------------------------------------------------------
+
+// ToggleLike handles the full like/dislike toggle logic for posts and comments.
+// targetType must be either "post" or "comment".
+// isLike: true = like, false = dislike.
+//
+// Logic:
+//
+//			-No existing vote -> INSERT
+//	     - Existing vote, same value -> 	DELETE (toggle, off)
+//	 	- Existing vote, different value -> UPDATAE (switch direction)
+func ToggleLike(db *sql.DB, userID, targetID int64, targetType string, isLike bool) error {
+	// Build the WHERE clause dynamically based on whether this is
+	// a post like or a comment like.
+	var targetColumn string
+	if targetType == "post" {
+		targetColumn = "post_id"
+	} else if targetType == "comment" {
+		targetColumn = "comment_id"
+	} else {
+		return fmt.Errorf("Invalid target type: %s", targetType)
+	}
+
+	// Check if like/dislike row already exists for this user + target.
+	// We read the current is_like value so we can decide what to do.
+	var existingIsLike bool
+	var existingID int64
+
+	err := db.QueryRow(
+		fmt.Sprintf(
+			"SELECT id, is_like FROM likes WHERE user_id = ? AND %s = ?",
+			targetColumn,
+		),
+		userID, targetID,
+	).Scan(&existingID, &existingIsLike)
+
+	if err == sql.ErrNoRows {
+		// No existing vote - INSERT a new like row.
+		// Set the appropriate column and leave the other NULL.
+		if targetType == "post" {
+			_, err = db.Exec(
+				`INSERT INTO likes (user_id, post_id, comment_id, is_like)
+				VALUES (?, ?, NULL, ?)`,
+				userID, targetID, isLike,
+			)
+		} else {
+			_, err = db.Exec(
+				`INSERT INTO likes (user_id, post_id, comment_id, is_like)
+				VALUES (?, NULL, ?, ?)`,
+				userID, targetID, isLike,
+			)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to insert like: %w", err)
+		}
+
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to query existing like: %w", err)
+	}
+
+	// Row exists. Decide: toggle off or switch direction.
+	isLikeInt := 0
+	if isLike {
+		isLikeInt = 1
+	}
+	existingIsLikeInt := 0
+	if existingIsLike {
+		existingIsLikeInt = 1
+	}
+
+	if isLikeInt == existingIsLikeInt {
+		// Same value clicked again - toggle off by deleting the row.
+		_, err = db.Exec(
+			"DELETE FROM likes WHERE id = ?", existingID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to delete like: %w", err)
+		}
+		return nil
+	}
+
+	_, err = db.Exec(
+		"UPDATE likes SET is_like = ? WHERE id = ?",
+		isLike, existingID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update like: %w", err)
+	}
+
+	return nil
+}
+
+// GetUserLikeStatus returns whether the user liked or disliked a target.
+// Returns exists bool, isLike bool.
+// Used by template to show the correct button state (active/inactive).
+func GetUserLikeStatus(db *sql.DB, userID, targetID int64, targetType string) (bool, bool, error) {
+	var targetColumn string
+	if targetType == "post" {
+		targetColumn = "post_id"
+	} else if targetType == "comment" {
+		targetColumn = "comment_id"
+	} else {
+		return false, false, fmt.Errorf("Invalid type of target: %s", targetType)
+	}
+
+	var isLike bool
+	err := db.QueryRow(
+		fmt.Sprintf(
+			"SELECT is_like FROM likes WHERE user_id = ? AND %s = ?",
+			targetColumn,
+		), userID, targetID,
+	).Scan(&isLike)
+
+	if err == sql.ErrNoRows {
+		// User has not voted on this target
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("failed to query like status: %w", err)
+	}
+
+	// exists=true, isLike=whatever they voted
+	return true, isLike, nil
 }
