@@ -50,3 +50,38 @@ func CreateCommentPOST(db *sql.DB) http.HandlerFunc {
 		http.Redirect(w, r, fmt.Sprintf("/post?id=%d", postID), http.StatusSeeOther)
 	}
 }
+
+func DeleteCommentPOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		userID, _ := utils.GetUserID(r)
+
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+
+		commentIDStr := r.FormValue("comment_id")
+		postIDStr := r.FormValue("post_id")
+
+		commentID, err := strconv.ParseInt(commentIDStr, 10, 64)
+		if err != nil || commentID <= 0 {
+			http.Error(w, "Invalid comment ID", http.StatusBadRequest)
+			return
+		}
+
+		postID, err := strconv.ParseInt(postIDStr, 10, 64)
+		if err != nil || postID <= 0 {
+			http.Error(w, "Invalid post ID", http.StatusBadRequest)
+			return
+		}
+
+		if err := database.DeleteComment(db, commentID, userID); err != nil {
+			http.Error(w, "Could not delete comment", http.StatusForbidden)
+			return
+		}
+
+		http.Redirect(w, r, fmt.Sprintf("/post?id=%d", postID), http.StatusSeeOther)
+
+	}
+}

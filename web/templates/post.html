@@ -1,81 +1,94 @@
-﻿
-{{define "content"}}
+﻿{{define "content"}}
 <div class="post-full">
 
-    <!-- Post -->
+    <div class="back-link">
+        <a href="/">← Back to posts</a>
+    </div>
+
     <article class="post-detail">
-        
         <h1>{{.Post.Title}}</h1>
-        <div class="post-meta">
-            by <strong>{{.Post.Username}}</strong>
+        <div class="post-meta-row">
+            <span class="post-author">👤 {{.Post.Username}}</span>
+            <div class="post-categories">
+                {{range .Post.Categories}}
+                <span class="category-tag">{{.}}</span>
+                {{end}}
+            </div>
         </div>
 
-        <div class="post-categories">
-            {{range .Categories}}
-            <span class="category-tag">{{.}}</span>
-            {{end}}
-        </div>
+        <div class="post-body">{{.Post.Content}}</div>
 
-        <div class="post-body">
-            {{.Post.Content}}
-        </div>
-
-        <div class="vote-buttons">
-            {{if $.LoggedIn}}
-                <form action="/like" method="POST" style="display:inline">
-                    <input type="hidden" name="target_type" value="post">
-                    <input type="hidden" name="target_id" value="{{.Post.ID}}">
-                    <input type="hidden" name="is_like" value="1">
-                    <input type="hidden" name="redirect" value="/post?id={{.Post.ID}}">
-                    <button type="submit" class="vote-btn like-btn">
-                        ðŸ‘ {{.Post.LikeCount}}
-                    </button>
-                </form>
-                <form action="/like" method="POST" style="display:inline">
-                    <input type="hidden" name="target_type" value="post">
-                    <input type="hidden" name="target_id" value="{{.Post.ID}}">
-                    <input type="hidden" name="is_like" value="0">
-                    <input type="hidden" name="redirect" value="/post?id={{.Post.ID}}">
-                    <button type="submit" class="vote-btn like-btn">
-                        ðŸ‘Ž {{.Post.DislikeCount}}
-                    </button>
-                </form>
+        <div class="vote-row" style="margin-top:1.2rem">
+            {{if .LoggedIn}}
+            <form action="/like" method="POST" style="display:inline">
+                <input type="hidden" name="target_type" value="post">
+                <input type="hidden" name="target_id"   value="{{.Post.ID}}">
+                <input type="hidden" name="is_like"     value="1">
+                <input type="hidden" name="redirect"    value="/post?id={{.Post.ID}}">
+                <button type="submit"
+                    class="vote-btn {{if eq .Post.UserVote 1}}vote-liked{{end}}">
+                    👍 {{.Post.LikeCount}}
+                </button>
+            </form>
+            <form action="/like" method="POST" style="display:inline">
+                <input type="hidden" name="target_type" value="post">
+                <input type="hidden" name="target_id"   value="{{.Post.ID}}">
+                <input type="hidden" name="is_like"     value="0">
+                <input type="hidden" name="redirect"    value="/post?id={{.Post.ID}}">
+                <button type="submit"
+                    class="vote-btn {{if eq .Post.UserVote -1}}vote-disliked{{end}}">
+                    👎 {{.Post.DislikeCount}}
+                </button>
+            </form>
             {{else}}
-            <span class="vote-count">ðŸ‘ {{.Post.LikeCount}}</span>
-            <span class="vote-count">ðŸ‘Ž {{.Post.DislikeCount}}</span>
+            <span class="vote-count">👍 {{.Post.LikeCount}}</span>
+            <span class="vote-count">👎 {{.Post.DislikeCount}}</span>
             {{end}}
         </div>
     </article>
 
-    
     <section class="comments-section">
-        <h2>Comments ({{len .Comments}})</h2>
+        <h2>Comments <span class="comment-count">{{len .Comments}}</span></h2>
 
         {{if .LoggedIn}}
-
-         <form action="/comment/create" method="POST" class="comment-form">
+        <form action="/comment/create" method="POST" class="comment-form">
             <input type="hidden" name="post_id" value="{{.Post.ID}}">
-            <textarea name="content" placeholder="Write a comment..." rows="3" required></textarea>
-            <button type="submit" class="btn btn-primary">Post Comment</button>
-         </form>
+            <textarea name="content"
+                      placeholder="Share your thoughts..."
+                      rows="3" required></textarea>
+            <div class="comment-form-footer">
+                <button type="submit" class="btn btn-primary">Post Comment</button>
+            </div>
+        </form>
+        {{else}}
+        <div class="login-prompt">
+            <a href="/login">Login</a> to join the conversation.
+        </div>
+        {{end}}
 
-         {{else}}
-         <p class="login-prompt">
-            <a href="/login">Login</a> to leave a comment.
-         </p>
-         {{end}}
-
-         {{if not .Comments}}
-            <p class="empty-state">No comments yet. Be the first!</p>
+        {{if not .Comments}}
+        <div class="empty-state">No comments yet.</div>
         {{end}}
 
         {{range .Comments}}
         <div class="comment-card">
             <div class="comment-header">
-                <strong>{{.Username}}</strong>
+                <strong class="comment-author">{{.Username}}</strong>
+                {{if and $.LoggedIn (eq $.UserID .UserID)}}
+                <!-- Delete button — only shown to the comment's author -->
+                <form action="/comment/delete" method="POST"
+                      style="display:inline; margin-left:auto">
+                    <input type="hidden" name="comment_id" value="{{.ID}}">
+                    <input type="hidden" name="post_id"    value="{{$.Post.ID}}">
+                    <button type="submit" class="btn-delete"
+                            onclick="return confirm('Delete this comment?')">
+                        🗑
+                    </button>
+                </form>
+                {{end}}
             </div>
             <p class="comment-content">{{.Content}}</p>
-            <div class="vote-buttons">
+            <div class="vote-row">
                 {{if $.LoggedIn}}
                 <form action="/like" method="POST" style="display:inline">
                     <input type="hidden" name="target_type" value="comment">
@@ -83,7 +96,8 @@
                     <input type="hidden" name="is_like"     value="1">
                     <input type="hidden" name="redirect"
                            value="/post?id={{$.Post.ID}}">
-                    <button type="submit" class="vote-btn like-btn">
+                    <button type="submit"
+                        class="vote-btn vote-btn-sm {{if eq .UserVote 1}}vote-liked{{end}}">
                         👍 {{.LikeCount}}
                     </button>
                 </form>
@@ -93,15 +107,15 @@
                     <input type="hidden" name="is_like"     value="0">
                     <input type="hidden" name="redirect"
                            value="/post?id={{$.Post.ID}}">
-                    <button type="submit" class="vote-btn dislike-btn">
+                    <button type="submit"
+                        class="vote-btn vote-btn-sm {{if eq .UserVote -1}}vote-disliked{{end}}">
                         👎 {{.DislikeCount}}
                     </button>
                 </form>
                 {{else}}
-                <span class="vote-count">👍 {{.Post.LikeCount}}</span> 
-                <span class="vote-count">👎 {{.Post.LikeCount}}</span> 
+                <span class="vote-count">👍 {{.LikeCount}}</span>
+                <span class="vote-count">👎 {{.DislikeCount}}</span>
                 {{end}}
-
             </div>
         </div>
         {{end}}

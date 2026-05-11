@@ -9,28 +9,26 @@
 </head>
 <body>
 
-    <nav class="navbar">
-        <a href="/" class="nab-brand">📋 Forum</a>
-        <div class="nav-links">
-            {{if .LoggedIn}}
-                <!-- Logged-in users will see their usernames and logout button -->
-                <span class="nab-username">👤 {{.Username}}</span>
-                <a href="/post/create" class="btn btn-primary">+ New Post</a>
-                <!-- Logout uses a form with POST method - never a plain link  -->
-                <form action="/logout" method="POST" style="display:inline">
-                    <button type="submit" class="btn btn-secondary">Logout</button>
-                </form>
-            {{else}}
-                Guests see login and register links
-                <a href="/login" class="btn btn-secondary">Login</a>
-                <a href="/register" class="btn btn-primary">Register</a>
-            {{end}}
-        </div>
-    </nav>
-
-    <div class="container">
-        {{block "content" .}}{{end}}
+<nav class="navbar">
+    <a href="/" class="nav-brand">💬 Forum</a>
+    <div class="nav-links">
+        {{if .LoggedIn}}
+            <span class="nav-username">👤 {{.Username}}</span>
+            <a href="/post/create" class="btn btn-primary">+ New Post</a>
+            <form action="/logout" method="POST" style="display:inline">
+                <button type="submit" class="btn btn-ghost">Logout</button>
+            </form>
+        {{else}}
+            <a href="/login" class="btn btn-ghost">Login</a>
+            <a href="/register" class="btn btn-primary">Register</a>
+        {{end}}
     </div>
+</nav>
+
+<div class="container">
+    {{block "content" .}}{{end}}
+</div>
+
 </body>
 </html>
 {{end}}

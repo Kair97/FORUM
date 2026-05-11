@@ -34,6 +34,7 @@ type Post struct {
 	Categories   []string
 	LikeCount    int
 	DislikeCount int
+	UserVote     int
 }
 
 type Category struct {
@@ -50,6 +51,7 @@ type Comment struct {
 	CreatedAt    time.Time
 	LikeCount    int
 	DislikeCount int
+	UserVote     int
 }
 
 type Like struct {

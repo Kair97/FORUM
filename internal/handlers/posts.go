@@ -63,7 +63,7 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 				return
 			}
 
-			posts, err = database.GetPostsByCategory(db, categoryID)
+			posts, err = database.GetPostsByCategory(db, categoryID, userID)
 			if err != nil {
 				http.Error(w, "innternal Server Error", http.StatusInternalServerError)
 				return
@@ -94,7 +94,7 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 			}
 		default:
 			// No filter so all posts are showed
-			posts, err = database.GetAllPosts(db)
+			posts, err = database.GetAllPosts(db, userID)
 			if err != nil {
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
@@ -152,8 +152,9 @@ func PostGET(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		userID, _ := utils.GetUserID(r)
 		// Fetch the post from database
-		post, comments, err := database.GetPostByID(db, postID)
+		post, comments, err := database.GetPostByID(db, postID, userID)
 		if err == sql.ErrNoRows {
 			// Post not found - return 404
 			http.NotFound(w, r)

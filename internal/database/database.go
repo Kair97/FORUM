@@ -60,6 +60,46 @@ func Init(dbPath string, schemaPath string) (*sql.DB, error) {
 
 }
 
+func getUserVoteForPost(db *sql.DB, userID, postID int64) int {
+	if userID == 0 {
+		return 0
+	}
+
+	var islike bool
+	err := db.QueryRow(
+		"SELECT is_like FROM likes WHERE user_id = ? AND post_id = ?",
+		userID, postID,
+	).Scan(&islike)
+
+	if err != nil {
+		return 0
+	}
+
+	if islike {
+		return 1
+	}
+	return -1
+
+}
+
+func getUserVoteForComment(db *sql.DB, userID, commentID int64) int {
+	if userID == 0 {
+		return 0
+	}
+	var isLike bool
+	err := db.QueryRow(
+		"SELECT is_like FROM likes WHERE user_id = ? AND comment_id = ?",
+		userID, commentID,
+	).Scan(&isLike)
+	if err != nil {
+		return 0
+	}
+	if isLike {
+		return 1
+	}
+	return -1
+}
+
 // -----------------------------------------------------------
 // CATEGORIES QUERIES
 // -----------------------------------------------------------
@@ -187,7 +227,7 @@ func CreatePost(db *sql.DB, userID int64, title, content, imagePath string, cate
 // GetAllPosts returns all posts ordered newest first.
 // Each post includes the author's username and like/dislike counts.
 // Categories are fetched seperately per post.
-func GetAllPosts(db *sql.DB) ([]models.Post, error) {
+func GetAllPosts(db *sql.DB, userID int64) ([]models.Post, error) {
 	rows, err := db.Query(`
 		SELECT 
 			p.id,
@@ -213,12 +253,12 @@ func GetAllPosts(db *sql.DB) ([]models.Post, error) {
 	}
 	defer rows.Close()
 
-	return scanPosts(db, rows)
+	return scanPosts(db, rows, userID)
 }
 
 // GetPostByID returns a single post by its ID with full details and comments.
 // Returns sql.ErrNoRows if the post does not exist.
-func GetPostByID(db *sql.DB, postID int64) (models.Post, []models.Comment, error) {
+func GetPostByID(db *sql.DB, postID, userID int64) (models.Post, []models.Comment, error) {
 	var p models.Post
 
 	err := db.QueryRow(`
@@ -268,10 +308,11 @@ func GetPostByID(db *sql.DB, postID int64) (models.Post, []models.Comment, error
 	p.Categories = categories
 
 	// Fetch comments for this post.
-	comments, err := GetCommentsByPostID(db, postID)
+	comments, err := GetCommentsByPostID(db, postID, userID)
 	if err != nil {
 		return p, nil, fmt.Errorf("failed to get comments: %w", err)
 	}
+	p.UserVote = getUserVoteForPost(db, userID, p.ID)
 
 	return p, comments, nil
 }
@@ -303,7 +344,7 @@ func CreateComment(db *sql.DB, postID, userID int64, content string) (int64, err
 // GetCommentsByPostID returns all comments for a given post,
 // ordered oldest first so conversation reads top to bottom.
 // Each comment includes the author's username and like/dislike counts.
-func GetCommentsByPostID(db *sql.DB, postID int64) ([]models.Comment, error) {
+func GetCommentsByPostID(db *sql.DB, postID, userID int64) ([]models.Comment, error) {
 	rows, err := db.Query(
 		`SELECT 
 			c.id,
@@ -348,6 +389,7 @@ func GetCommentsByPostID(db *sql.DB, postID int64) ([]models.Comment, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan comment: %w", err)
 		}
+		c.UserVote = getUserVoteForComment(db, userID, c.ID)
 
 		comments = append(comments, c)
 	}
@@ -495,7 +537,7 @@ func GetUserLikeStatus(db *sql.DB, userID, targetID int64, targetType string) (b
 
 // GetPostsByCategory returns all posts belonging to a specific category.
 // Available to all even to guests.
-func GetPostsByCategory(db *sql.DB, categoryID int64) ([]models.Post, error) {
+func GetPostsByCategory(db *sql.DB, categoryID int64, userID int64) ([]models.Post, error) {
 	rows, err := db.Query(`
 		SELECT 
 			p.id,
@@ -523,7 +565,7 @@ func GetPostsByCategory(db *sql.DB, categoryID int64) ([]models.Post, error) {
 
 	defer rows.Close()
 
-	return scanPosts(db, rows)
+	return scanPosts(db, rows, userID)
 }
 
 // GetPostsByUser returns all posts created by a specific user.
@@ -555,7 +597,7 @@ func GetPostsByUser(db *sql.DB, userID int64) ([]models.Post, error) {
 
 	defer rows.Close()
 
-	return scanPosts(db, rows)
+	return scanPosts(db, rows, userID)
 }
 
 // GetPostsLikedByUser returns all posts that a specific user has liked.
@@ -591,14 +633,14 @@ func GetPostsLikedByUser(db *sql.DB, userID int64) ([]models.Post, error) {
 
 	defer rows.Close()
 
-	return scanPosts(db, rows)
+	return scanPosts(db, rows, userID)
 }
 
 // scanPosts is a shared helper that scans a *sql.Rows result into []models.Post.
 // All four post queries (GetAllPosts, GetPostsByCategory, GetPostsByUser,
 // GetPostsLikedByUser) return the same columns in the same order —
 // so we extract the scanning logic once here instead of duplicating it four times.
-func scanPosts(db *sql.DB, rows *sql.Rows) ([]models.Post, error) {
+func scanPosts(db *sql.DB, rows *sql.Rows, userID int64) ([]models.Post, error) {
 	var posts []models.Post
 
 	for rows.Next() {
@@ -624,6 +666,9 @@ func scanPosts(db *sql.DB, rows *sql.Rows) ([]models.Post, error) {
 		}
 
 		p.Categories = categories
+
+		p.UserVote = getUserVoteForPost(db, userID, p.ID)
+
 		posts = append(posts, p)
 	}
 
@@ -632,4 +677,25 @@ func scanPosts(db *sql.DB, rows *sql.Rows) ([]models.Post, error) {
 	}
 
 	return posts, nil
+}
+
+func DeleteComment(db *sql.DB, commentID, userID int64) error {
+	result, err := db.Exec(
+		"DELETE FROM comments WHERE id = ? AND user_id = ?",
+		commentID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete comment")
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		fmt.Errorf("failed to checl RowsAffected()")
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("comment not found or not owned by the user")
+	}
+	return nil
+
 }
