@@ -3,6 +3,8 @@ package utils
 import (
 	"forum/internal/middleware"
 	"net/http"
+	"path/filepath"
+	"text/template"
 )
 
 // Utils - utility functions
@@ -18,4 +20,33 @@ func GetUserID(r *http.Request) (int64, bool) {
 	// ok will be false instead of panicking.
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	return userID, ok
+}
+
+// RenderTemplate parses and executes an HTML template.
+// It always includes base.html as the layout wrapper.
+// pagePath is the path to the specific page template.
+// data is passed directly to the template engine.
+func RenderTemplate(w http.ResponseWriter, pagePath string, data interface{}) {
+	// We parse base.html + the specific page template together.
+	// The base defines the outer HTML structure.
+	// The page defines the "content" block that goes inside base.
+	tmpl, err := template.ParseFiles(
+		"web/templates/base.html",
+		pagePath,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Execute runs the template with the provided data and writes
+	// the result directly to the HTTP response writer.
+	// "base.html" refers to the {{define "base"}} block in base.html —
+	// we execute the base which then pulls in the content block.
+	err = tmpl.ExecuteTemplate(w, filepath.Base("web/templates/base.html"), data)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 }

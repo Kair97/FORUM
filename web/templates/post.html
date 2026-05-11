@@ -1,0 +1,111 @@
+﻿
+{{define "content"}}
+<div class="post-full">
+
+    <!-- Post -->
+    <article class="post-detail">
+        
+        <h1>{{.Post.Title}}</h1>
+        <div class="post-meta">
+            by <strong>{{.Post.Username}}</strong>
+        </div>
+
+        <div class="post-categories">
+            {{range .Categories}}
+            <span class="category-tag">{{.}}</span>
+            {{end}}
+        </div>
+
+        <div class="post-body">
+            {{.Post.Content}}
+        </div>
+
+        <div class="vote-buttons">
+            {{if $.LoggedIn}}
+                <form action="/like" method="POST" style="display:inline">
+                    <input type="hidden" name="target_type" value="post">
+                    <input type="hidden" name="target_id" value="{{.Post.ID}}">
+                    <input type="hidden" name="is_like" value="1">
+                    <input type="hidden" name="redirect" value="/post?id={{.Post.ID}}">
+                    <button type="submit" class="vote-btn like-btn">
+                        ðŸ‘ {{.Post.LikeCount}}
+                    </button>
+                </form>
+                <form action="/like" method="POST" style="display:inline">
+                    <input type="hidden" name="target_type" value="post">
+                    <input type="hidden" name="target_id" value="{{.Post.ID}}">
+                    <input type="hidden" name="is_like" value="0">
+                    <input type="hidden" name="redirect" value="/post?id={{.Post.ID}}">
+                    <button type="submit" class="vote-btn like-btn">
+                        ðŸ‘Ž {{.Post.DislikeCount}}
+                    </button>
+                </form>
+            {{else}}
+            <span class="vote-count">ðŸ‘ {{.Post.LikeCount}}</span>
+            <span class="vote-count">ðŸ‘Ž {{.Post.DislikeCount}}</span>
+            {{end}}
+        </div>
+    </article>
+
+    
+    <section class="comments-section">
+        <h2>Comments ({{len .Comments}})</h2>
+
+        {{if .LoggedIn}}
+
+         <form action="/comment/create" method="POST" class="comment-form">
+            <input type="hidden" name="post_id" value="{{.Post.ID}}">
+            <textarea name="content" placeholder="Write a comment..." rows="3" required></textarea>
+            <button type="submit" class="btn btn-primary">Post Comment</button>
+         </form>
+
+         {{else}}
+         <p class="login-prompt">
+            <a href="/login">Login</a> to leave a comment.
+         </p>
+         {{end}}
+
+         {{if not .Comments}}
+            <p class="empty-state">No comments yet. Be the first!</p>
+        {{end}}
+
+        {{range .Comments}}
+        <div class="comment-card">
+            <div class="comment-header">
+                <strong>{{.Username}}</strong>
+            </div>
+            <p class="comment-content">{{.Content}}</p>
+            <div class="vote-buttons">
+                {{if $.LoggedIn}}
+                <form action="/like" method="POST" style="display:inline">
+                    <input type="hidden" name="target_type" value="comment">
+                    <input type="hidden" name="target_id"   value="{{.ID}}">
+                    <input type="hidden" name="is_like"     value="1">
+                    <input type="hidden" name="redirect"
+                           value="/post?id={{$.Post.ID}}">
+                    <button type="submit" class="vote-btn like-btn">
+                        👍 {{.LikeCount}}
+                    </button>
+                </form>
+                <form action="/like" method="POST" style="display:inline">
+                    <input type="hidden" name="target_type" value="comment">
+                    <input type="hidden" name="target_id"   value="{{.ID}}">
+                    <input type="hidden" name="is_like"     value="0">
+                    <input type="hidden" name="redirect"
+                           value="/post?id={{$.Post.ID}}">
+                    <button type="submit" class="vote-btn dislike-btn">
+                        👎 {{.DislikeCount}}
+                    </button>
+                </form>
+                {{else}}
+                <span class="vote-count">👍 {{.Post.LikeCount}}</span> 
+                <span class="vote-count">👎 {{.Post.LikeCount}}</span> 
+                {{end}}
+
+            </div>
+        </div>
+        {{end}}
+    </section>
+
+</div>
+{{end}}

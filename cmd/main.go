@@ -25,6 +25,12 @@ func main() {
 
 	log.Println("Database initialized successfully")
 
+	// Serve static files (CSS, JS, uploads) from web/static/.
+	// http.StripPrefix removes "/static" from the URL before looking up the file.
+	// So /static/css/style.css → web/static/css/style.css on disk.
+	fs := http.FileServer(http.Dir("web/static"))
+	http.Handle("/static/", http.StripPrefix("/static/", fs))
+
 	// ----------- Auth routes -----------------------------------------------
 	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

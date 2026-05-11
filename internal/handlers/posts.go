@@ -15,6 +15,10 @@ import (
 	"strings"
 )
 
+const index = "web/templates/index.html"
+const postpage = "web/templates/post.html"
+const cpost = "web/templates/create-post.html"
+
 // IndexGET serves the homepage showing all posts.
 // Available to all users - guests and logged-in users.
 
@@ -48,6 +52,7 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 		}
 
 		var posts []models.Post
+		var categoryID int64
 
 		switch {
 		case categoryIDStr != "":
@@ -60,7 +65,7 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 
 			posts, err = database.GetPostsByCategory(db, categoryID)
 			if err != nil {
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				http.Error(w, "innternal Server Error", http.StatusInternalServerError)
 				return
 			}
 		case filter == "created":
@@ -97,22 +102,34 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// For now print plain text — templates come in Phase 8.
-		fmt.Fprintf(w, "Filter: category_id=%s filter=%s | LoggedIn: %v\n\n",
-			categoryIDStr, filter, loggedIn)
-
-		fmt.Fprintf(w, "Categories:\n")
-		for _, c := range categories {
-			fmt.Fprintf(w, "  [%d] %s\n", c.ID, c.Name)
+		var username string
+		if loggedIn {
+			username = getUsernameByID(db, userID)
 		}
 
-		fmt.Fprintf(w, "\nPosts (%d):\n", len(posts))
-		for _, p := range posts {
-			fmt.Fprintf(w, "  [%d] %s by %s | 👍%d 👎%d | %v\n",
-				p.ID, p.Title, p.Username,
-				p.LikeCount, p.DislikeCount, p.Categories)
-		}
+		utils.RenderTemplate(w, index, models.Template{
+			Posts:      posts,
+			Categories: categories,
+			LoggedIn:   loggedIn,
+			UserID:     userID,
+			Username:   username,
+			Filter:     filter,
+			CategoryID: categoryID,
+		})
+
 	}
+}
+
+func getUsernameByID(db *sql.DB, userID int64) string {
+	var username string
+	err := db.QueryRow(
+		"SELECT username FROM users WHERE id = ?", userID,
+	).Scan(&username)
+
+	if err != nil {
+		return ""
+	}
+	return username
 }
 
 // PostGET serves the single post page with all its comments.
@@ -148,16 +165,16 @@ func PostGET(db *sql.DB) http.HandlerFunc {
 		}
 
 		userID, loggedIn := utils.GetUserID(r)
+		var username string
+		username = getUsernameByID(db, userID)
 
-		// Again for now we just print it
-		fmt.Fprintf(w, "Post: %s\nBy: %s\nContent: %s\nLikes: %d\nDislikes: %d\nCategories: %v\nLoggedIn: %v UserID: %d\n",
-			post.Title, post.Username, post.Content, post.LikeCount, post.DislikeCount, post.Categories, loggedIn, userID)
-
-		fmt.Fprintf(w, "Comments (%d):\n", len(comments))
-		for _, c := range comments {
-			fmt.Fprintf(w, "  [%s]: %s (👍%d 👎%d)\n", c.Username, c.Content, c.LikeCount, c.DislikeCount)
-		}
-		fmt.Fprintf(w, "\nLoggedIn: %v | UserID: %d\n", loggedIn, userID)
+		utils.RenderTemplate(w, postpage, models.Template{
+			Post:     post,
+			Comments: comments,
+			LoggedIn: loggedIn,
+			UserID:   userID,
+			Username: username,
+		})
 	}
 }
 
@@ -171,11 +188,14 @@ func CreatePostGET(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Print category options - form template comes later
-		fmt.Fprintf(w, "Create a new post. Abailable categories:")
-		for _, c := range categories {
-			fmt.Fprintf(w, " [%d] %s\n", c.ID, c.Name)
-		}
+		userID, _ := utils.GetUserID(r)
+
+		utils.RenderTemplate(w, cpost, models.Template{
+			Categories: categories,
+			LoggedIn:   true,
+			Username:   getUsernameByID(db, userID),
+		})
+
 	}
 }
 

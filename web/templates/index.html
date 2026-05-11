@@ -1,0 +1,115 @@
+{{define "content"}}
+
+<div class="layout">
+
+    <!-- Sidebar: filter -->
+    <aside class="sidebar">
+        <div class="filter-section">
+            <h3>Categories</h3>
+            <ul class="filter-list">
+                <li>
+                    <a href="/" class="{{if not .CategoryID}}active{{end}}">
+                        All Posts   
+                    </a>
+                </li>
+                {{range .Categories}}
+                <li>
+                    <a href="/?category_id={{.ID}}" class="{{if eq $.CategoryID .ID}}active{{end}}">
+                        {{.Name}}
+                    </a>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+
+        {{if .LoggedIn}}
+        <div class="filter-section">
+            <h3>My Posts</h3>
+            <ul class="filter-list">
+                <li>
+                    <a href="/?filter=created"
+                    class="{{if eq .Filter "created"}}active{{end}}">
+                    Created by me
+                    </a>
+                </li>
+                <li>
+                    <a href="/?filter=liked"
+                    class="{{if eq .Filter "liked"}}active{{end}}">
+                    Liked by me
+                </a>
+                </li>
+            </ul>
+        </div>
+        {{end}}
+
+    </aside>
+
+
+    <!-- Main content: posts list -->
+    <main class="main-content">
+        <h2>Posts</h2>
+
+        {{if not .Posts}}
+            <p class="empty-state">No posts found</p>
+        {{end}}
+
+        {{range .Posts}}
+        <article class="post-card">
+            <div class="post-header">
+                <a href="/post?id={{.ID}}" class="post-title">{{.Title}}</a>
+                <span class="post-meta">by {{.Username}}</span>
+            </div>
+
+            <div class="post-categories">
+                {{range .Categories}}
+                <a href="/?category_id=" class="category-tag">{{.}}</a>
+                {{end}}
+            </div>
+
+            <p class="post-preview">
+                {{if gt (len .Content) 200}}
+                    {{slice .Content 0 200}}... 
+                {{else}}
+                    {{.Content}}
+                {{end}}
+            </p>
+
+            <!-- Like button -->
+            <div class="post-footer">
+                <div class="vote-buttons">
+                    {{if $.LoggedIn}}
+                    <form action="/like" method="POST" style="display:inline">
+                        <input type="hidden" name="target_type" value="post">
+                        <input type="hidden" name="target_id" value="{{.ID}}">
+                        <input type="hidden" name="is_like" value="1">
+                        <input type="hidden" name="redirect" value="/">
+                        <button type="submit" class="vote-btn {{if eq .UserReaction 1}}like-btn">
+                            👍 {{.LikeCount}}
+                        </button>
+                    </form>
+
+                    <!-- Dislike button -->
+                    <form action="/like" method="POST" style="display:inline">
+                        <input type="hidden" name="target_type" value="post">
+                        <input type="hidden" name="target_id" value="{{.ID}}">
+                        <input type="hidden" name="is_like" value="0">
+                        <input type="hidden" name="redirect" value="/">
+                        <button type="submit" class="vote-btn like-btn">
+                            👎 {{.DislikeCount}}
+                        </button>
+                    </form>
+                    {{else}}
+                    <!-- Guests see counts but no buttons -->
+                     <span class="vote-count">👍 {{.LikeCount}}</span>
+                     <span clas="vote-count">👎 {{.DislikeCount}}</span>
+                    {{end}}
+                </div>
+                <a href="/post?id={{.ID}}" class="comment-link">💬 View Post</a>
+            </div>
+        </article>
+        {{end}}
+
+    </main>
+
+</div>
+{{end}}

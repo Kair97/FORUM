@@ -4,13 +4,17 @@ import (
 	"database/sql"
 	"forum/internal/auth"
 	"forum/internal/models"
+	"forum/internal/utils"
 	"net/http"
 	"strings"
 )
 
+const login = "web/templates/login.html"
+const register = "web/templates/register.html"
+
 func RegisterGET(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Registration is coming soon in phase 8"))
+		utils.RenderTemplate(w, register, models.Template{})
 	}
 }
 
@@ -29,12 +33,20 @@ func RegisterPOST(db *sql.DB) http.HandlerFunc {
 		password := r.FormValue("password")
 
 		if email == "" || username == "" || password == "" {
-			http.Error(w, "All fields are reqruired", http.StatusBadRequest)
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, register, models.Template{
+				Error: "All fields are required",
+			})
+
 			return
 		}
 
 		if len(password) < 6 {
-			http.Error(w, "Password is too short (len(password)>=6)", http.StatusBadRequest)
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, register, models.Template{
+				Error: "Password is too short!",
+			})
+
 			return
 		}
 
@@ -86,7 +98,7 @@ func RegisterPOST(db *sql.DB) http.HandlerFunc {
 
 func LoginGET(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Login page is coming in phase-8"))
+		utils.RenderTemplate(w, login, models.Template{})
 	}
 }
 
@@ -101,7 +113,10 @@ func LoginPOST(db *sql.DB) http.HandlerFunc {
 		password := r.FormValue("password")
 
 		if email == "" || password == "" {
-			http.Error(w, "All fields are required", http.StatusBadRequest)
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, login, models.Template{
+				Error: "All fields are required!",
+			})
 			return
 		}
 
@@ -117,7 +132,10 @@ func LoginPOST(db *sql.DB) http.HandlerFunc {
 			// Important: we use same error message as wrong password
 			// So that it prevents user enumeration --> an attacker cannot tell
 			// whether email exists or password was wrong
-			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			w.WriteHeader(http.StatusUnauthorized)
+			utils.RenderTemplate(w, login, models.Template{
+				Error: "Invalid email or password",
+			})
 			return
 		}
 
@@ -128,7 +146,10 @@ func LoginPOST(db *sql.DB) http.HandlerFunc {
 
 		// Verify the password
 		if err := auth.CheckPassword(password, user.PasswordHash); err != nil {
-			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			w.WriteHeader(http.StatusUnauthorized)
+			utils.RenderTemplate(w, login, models.Template{
+				Error: "Invalid email or password",
+			})
 			return
 		}
 		// Password is correct. Create a new session for this user

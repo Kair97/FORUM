@@ -60,3 +60,16 @@ type Like struct {
 	IsLike    bool
 	CreatedAt time.Time
 }
+
+type Template struct {
+	Posts      []Post
+	Post       Post
+	Comments   []Comment
+	Categories []Category
+	UserID     int64
+	Username   string
+	LoggedIn   bool
+	Error      string
+	Filter     string
+	CategoryID int64
+}
