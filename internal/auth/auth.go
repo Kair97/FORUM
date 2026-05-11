@@ -134,7 +134,7 @@ func ValidateSession(r *http.Request, db *sql.DB) (int64, error) {
 // Call this on logout.
 func DeleteSession(w http.ResponseWriter, r *http.Request, db *sql.DB) error {
 	// Read the current session cookie
-	cookie, err := r.Cookie("session_take")
+	cookie, err := r.Cookie("session_token")
 	if err != nil {
 		// No cookies means already logged out - not an error worth returning
 		return nil
