@@ -7,7 +7,13 @@
 
     <article class="post-detail">
         <h1>{{.Post.Title}}</h1>
+        {{if .Post.ImagePath}}
+                <div class="post-image" >
+                    <img src="{{.Post.ImagePath}}" alt="Post image">
+                </div>
+        {{end}}
         <div class="post-meta-row">
+    
             <span class="post-author">👤 {{.Post.Username}}</span>
             <div class="post-categories">
                 {{range .Post.Categories}}
@@ -44,6 +50,15 @@
             <span class="vote-count">👍 {{.Post.LikeCount}}</span>
             <span class="vote-count">👎 {{.Post.DislikeCount}}</span>
             {{end}}
+            {{if or (eq $.Role "moderator") (eq $.Role "admin")}}
+                <form action="/mod/delete-post" method="POST" style="margin-top:1rem">
+                    <input type="hidden" name="post_id" value="{{.Post.ID}}">
+                    <button type="submit" class="btn-delete"
+                            onclick="return confirm('Delete this post? This cannot be undone.')">
+                        🗑 Delete Post (mod)
+                    </button>
+                </form>
+                {{end}}
         </div>
     </article>
 
@@ -74,18 +89,6 @@
         <div class="comment-card">
             <div class="comment-header">
                 <strong class="comment-author">{{.Username}}</strong>
-                {{if and $.LoggedIn (eq $.UserID .UserID)}}
-                <!-- Delete button — only shown to the comment's author -->
-                <form action="/comment/delete" method="POST"
-                      style="display:inline; margin-left:auto">
-                    <input type="hidden" name="comment_id" value="{{.ID}}">
-                    <input type="hidden" name="post_id"    value="{{$.Post.ID}}">
-                    <button type="submit" class="btn-delete"
-                            onclick="return confirm('Delete this comment?')">
-                        🗑
-                    </button>
-                </form>
-                {{end}}
             </div>
             <p class="comment-content">{{.Content}}</p>
             <div class="vote-row">
@@ -115,6 +118,19 @@
                 {{else}}
                 <span class="vote-count">👍 {{.LikeCount}}</span>
                 <span class="vote-count">👎 {{.DislikeCount}}</span>
+                {{end}}
+
+
+                {{if or (and $.LoggedIn (eq $.UserID .UserID)) (eq $.Role "moderator") (eq $.Role "admin")}}
+                <form action="{{if or (eq $.Role "moderator") (eq $.Role "admin")}}/mod/delete-comment{{else}}/comment/delete{{end}}"
+                    method="POST" style="display:inline; margin-left:auto">
+                    <input type="hidden" name="comment_id" value="{{.ID}}">
+                    <input type="hidden" name="post_id"    value="{{$.Post.ID}}">
+                    <button type="submit" class="btn-delete"
+                            onclick="return confirm('Delete this comment?')">
+                        🗑
+                    </button>
+                </form>
                 {{end}}
             </div>
         </div>

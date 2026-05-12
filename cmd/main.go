@@ -31,6 +31,35 @@ func main() {
 	fs := http.FileServer(http.Dir("web/static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
+	http.HandleFunc("/mod/delete-post", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireModerator(handlers.DeletePostPOST(db), db)(w, r)
+	})
+	http.HandleFunc("/mod/delete-comment", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireModerator(handlers.DeleteAnyCommentPOST(db), db)(w, r)
+	})
+
+	http.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAdmin(handlers.AdminPanelGET(db), db)(w, r)
+	})
+	http.HandleFunc("/admin/set-role", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAdmin(handlers.SetRolePOST(db), db)(w, r)
+	})
 	// ----------- Auth routes -----------------------------------------------
 	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

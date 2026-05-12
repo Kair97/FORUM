@@ -90,9 +90,14 @@ a:hover { text-decoration: underline; }
 
 .layout {
     display: grid;
-    grid-template-columns: 210px 1fr;
+    grid-template-columns: 210px minmax(0, 1fr);
     gap: 1.8rem;
     align-items: start;
+}
+
+.post-card {
+    min-width: 0;
+    overflow: hidden;
 }
 
 /* ── Sidebar ─────────────────────────────────── */
@@ -442,4 +447,155 @@ a:hover { text-decoration: underline; }
     padding: 0.7rem 1rem;
     margin-bottom: 1rem;
     font-size: 0.875rem;
+}
+
+/* ── Image Upload ────────────────────────────── */
+.file-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.file-input {
+    /* Hide the default ugly file input */
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    position: absolute;
+    z-index: -1;
+}
+
+.file-label {
+    display: inline-block;
+    padding: 0.42rem 1rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+.file-label:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.file-name {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+}
+
+/* Post image display */
+.post-image {
+    width: 100%;
+    max-width: 100%;
+    margin: 1.2rem 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+}
+
+
+.post-image img {
+    width: 100%;
+    max-width: 100%;
+    max-height: 400px;
+    object-fit: contain;
+    display: block;
+    background: var(--surface2);
+}
+/* .post-image img {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    max-height: 420px;
+    height: auto;
+    object-fit: contain;
+} */
+/* Thumbnail on post cards */
+/* .post-card-image {
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    border-radius: 6px;
+    margin-bottom: 0.8rem;
+    display: block;
+} */
+
+.post-card-image {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    background: var(--surface2);
+    border-radius: 6px;
+    margin-bottom: 0.8rem;
+}
+
+.main-content {
+    min-width: 0;
+}
+
+/* ── Admin Panel ─────────────────────────────── */
+.admin-table-wrapper {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.admin-table th {
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.admin-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+}
+
+.admin-table tr:last-child td { border-bottom: none; }
+.admin-table tr:hover td { background: var(--surface2); }
+
+.role-badge {
+    display: inline-block;
+    padding: 0.18rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.role-user      { background: var(--surface2); color: var(--text-muted); }
+.role-moderator { background: rgba(88,101,242,0.2); color: #8b9cf4; }
+.role-admin     { background: rgba(237,66,69,0.15); color: #f87171; }
+
+.role-select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 0.28rem 0.6rem;
+    font-size: 0.82rem;
+    cursor: pointer;
 }

@@ -620,7 +620,7 @@ func GetPostsLikedByUser(db *sql.DB, userID int64) ([]models.Post, error) {
 		-- Subquery: only include posts where this user has a like (is_like=1)row
 		WHERE p.id IN (
 			SELECT post_id FROM likes
-			WHERE user_id = ? AND l.is_like = 1 AND post_id IS NOT NULL
+			WHERE user_id = ? AND is_like = 1 AND post_id IS NOT NULL
 		)
 		GROUP BY p.id
 		ORDER BY p.created_at DESC`,
@@ -690,7 +690,7 @@ func DeleteComment(db *sql.DB, commentID, userID int64) error {
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		fmt.Errorf("failed to checl RowsAffected()")
+		return fmt.Errorf("failed to checl RowsAffected()")
 	}
 
 	if rows == 0 {
@@ -698,4 +698,64 @@ func DeleteComment(db *sql.DB, commentID, userID int64) error {
 	}
 	return nil
 
+}
+
+// DeletePost deletes any post by ID (moderator/admin action).
+func DeletePost(db *sql.DB, postID int64) error {
+	result, err := db.Exec("DELETE FROM posts WHERE id = ?", postID)
+	if err != nil {
+		return fmt.Errorf("failed to delete post: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("post not found")
+	}
+	return nil
+}
+
+// DeleteAnyComment deletes any comment by ID (moderator/admin action).
+// Different from DeleteComment which checks ownership.
+func DeleteAnyComment(db *sql.DB, commentID int64) error {
+	result, err := db.Exec("DELETE FROM comments WHERE id = ?", commentID)
+	if err != nil {
+		return fmt.Errorf("failed to delete comment: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("comment not found")
+	}
+	return nil
+}
+
+// GetAllUsers returns all users — for the admin panel.
+func GetAllUsers(db *sql.DB) ([]models.User, error) {
+	rows, err := db.Query(
+		"SELECT id, email, username, role, created_at FROM users ORDER BY created_at DESC",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Email, &u.Username, &u.Role, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// SetUserRole updates a user's role. Valid values: "user", "moderator", "admin".
+func SetUserRole(db *sql.DB, userID int64, role string) error {
+	if role != "user" && role != "moderator" && role != "admin" {
+		return fmt.Errorf("invalid role: %s", role)
+	}
+	_, err := db.Exec("UPDATE users SET role = ? WHERE id = ?", role, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update role: %w", err)
+	}
+	return nil
 }

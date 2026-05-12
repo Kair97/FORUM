@@ -80,6 +80,10 @@
                 <a href="/post?id={{.ID}}" class="post-title">{{.Title}}</a>
             </div>
 
+            {{if .ImagePath}}
+            <img src="{{.ImagePath}}" alt="Post image" class="post-card-image">
+            {{end}}
+
             <div class="post-meta-row">
                 <span class="post-author">👤 {{.Username}}</span>
                 <div class="post-categories">

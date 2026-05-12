@@ -12,17 +12,23 @@
 <nav class="navbar">
     <a href="/" class="nav-brand">💬 Forum</a>
     <div class="nav-links">
-        {{if .LoggedIn}}
-            <span class="nav-username">👤 {{.Username}}</span>
-            <a href="/post/create" class="btn btn-primary">+ New Post</a>
-            <form action="/logout" method="POST" style="display:inline">
-                <button type="submit" class="btn btn-ghost">Logout</button>
-            </form>
-        {{else}}
-            <a href="/login" class="btn btn-ghost">Login</a>
-            <a href="/register" class="btn btn-primary">Register</a>
+    {{if .LoggedIn}}
+        <span class="nav-username">👤 {{.Username}}</span>
+
+        {{if eq .Role "admin"}}
+        <a href="/admin" class="btn btn-ghost" style="font-size:0.82rem">⚙️ Admin</a>
         {{end}}
-    </div>
+
+        <a href="/post/create" class="btn btn-primary">+ New Post</a>
+
+        <form action="/logout" method="POST" style="display:inline">
+            <button type="submit" class="btn btn-ghost">Logout</button>
+        </form>
+    {{else}}
+        <a href="/login" class="btn btn-ghost">Login</a>
+        <a href="/register" class="btn btn-primary">Register</a>
+    {{end}}
+</div>
 </nav>
 
 <div class="container">

@@ -74,4 +74,6 @@ type Template struct {
 	Error      string
 	Filter     string
 	CategoryID int64
+	Users      []User
+	Role       string
 }

@@ -115,6 +115,7 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 			Username:   username,
 			Filter:     filter,
 			CategoryID: categoryID,
+			Role:       utils.GetRole(r),
 		})
 
 	}
@@ -175,6 +176,7 @@ func PostGET(db *sql.DB) http.HandlerFunc {
 			LoggedIn: loggedIn,
 			UserID:   userID,
 			Username: username,
+			Role:     utils.GetRole(r),
 		})
 	}
 }
@@ -195,6 +197,7 @@ func CreatePostGET(db *sql.DB) http.HandlerFunc {
 			Categories: categories,
 			LoggedIn:   true,
 			Username:   getUsernameByID(db, userID),
+			Role:       utils.GetRole(r),
 		})
 
 	}
@@ -207,7 +210,7 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 
 		userID, _ := utils.GetUserID(r)
 
-		if err := r.ParseForm(); err != nil {
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
 			http.Error(w, "Bad Request", http.StatusBadRequest)
 			return
 		}
@@ -217,7 +220,15 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 
 		// Validate: title and content must not be empty
 		if title == "" || content == "" {
-			http.Error(w, "Title and content are required", http.StatusBadRequest)
+			categories, _ := database.GetAllCategories(db)
+			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
+				Categories: categories,
+				LoggedIn:   true,
+				Username:   getUsernameByID(db, userID),
+				Error:      "Title and content are required",
+				Role:       utils.GetRole(r),
+			})
+
 			return
 		}
 
@@ -226,7 +237,14 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 		// r.Form["category_ids"] returns []string of all selected values.
 		categoryStrs := r.Form["category_ids"]
 		if len(categoryStrs) == 0 {
-			http.Error(w, "Select at least one category", http.StatusBadRequest)
+			categories, _ := database.GetAllCategories(db)
+			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
+				Categories: categories,
+				LoggedIn:   true,
+				Username:   getUsernameByID(db, userID),
+				Error:      "Select at least one category",
+				Role:       utils.GetRole(r),
+			})
 			return
 		}
 
@@ -241,9 +259,22 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 			categoryIDs = append(categoryIDs, id)
 		}
 
+		imagePath, err := utils.SaveUploadImage(r, "image")
+		if err != nil {
+			categories, _ := database.GetAllCategories(db)
+			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
+				Categories: categories,
+				LoggedIn:   true,
+				Username:   getUsernameByID(db, userID),
+				Error:      err.Error(),
+				Role:       utils.GetRole(r),
+			})
+			return
+		}
+
 		// Create the post in the database.
 		// For now we will not add image path
-		postID, err := database.CreatePost(db, userID, title, content, "", categoryIDs)
+		postID, err := database.CreatePost(db, userID, title, content, imagePath, categoryIDs)
 		if err != nil {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return

@@ -1,10 +1,15 @@
 package utils
 
 import (
+	"fmt"
 	"forum/internal/middleware"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"text/template"
+
+	"github.com/gofrs/uuid"
 )
 
 // Utils - utility functions
@@ -49,4 +54,88 @@ func RenderTemplate(w http.ResponseWriter, pagePath string, data interface{}) {
 		return
 	}
 
+}
+
+// Shifting left by 1 is like multiplying by 2.
+// So shifting left by 20 it means: 10 * 2^20
+// 10 << 20 = 10 * 1,048,576 = 10,485,760
+// Which is about 10MB
+const maxUploadSize = 10 << 20 // 10 MB
+
+var allowedMIMETypes = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+}
+
+// SaveUploadedImage reads an uploaded image from the request,
+// validates its type and size, saves it to the uploads directory,
+// and returns the public URL path to the saved file.
+// Returns an empty string and nil error if no file was uploaded.
+// Returns an error if the file is invalid or cannot be saved.
+func SaveUploadImage(r *http.Request, fieldName string) (string, error) {
+	// Retrieve the file from the multipart form.
+	// r.FormFile returns the file, its header info, and any error.
+	file, header, err := r.FormFile(fieldName)
+	if err == http.ErrMissingFile {
+		return "", nil
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to read uploaded file: %w", err)
+	}
+
+	defer file.Close()
+
+	if header.Size > maxUploadSize {
+		return "", fmt.Errorf("file is too large: max 10MB: %w", err)
+	}
+
+	buffer := make([]byte, 512)
+	_, err = file.Read(buffer)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file header: %w", err)
+	}
+
+	mimeType := http.DetectContentType(buffer)
+
+	ext, allowed := allowedMIMETypes[mimeType]
+	if !allowed {
+		return "", fmt.Errorf("invalid file type: %w", err)
+	}
+
+	_, err = file.Seek(0, io.SeekStart)
+	if err != nil {
+		return "", fmt.Errorf("failed to reset file reader: %w", err)
+	}
+
+	id, err := uuid.NewV4()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate filename: %w", err)
+	}
+
+	filename := id.String() + ext
+
+	uploadDir := "web/static/uploads"
+	fullPath := filepath.Join(uploadDir, filename)
+
+	dst, err := os.Create(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create file on disk: %w", err)
+	}
+
+	defer dst.Close()
+
+	_, err = io.Copy(dst, file)
+	if err != nil {
+		return "", fmt.Errorf("failed to save the file: %w", err)
+	}
+
+	return "/static/uploads/" + filename, nil
+}
+
+func GetRole(r *http.Request) string {
+	role, _ := r.Context().Value(middleware.ContextKey("role")).(string)
+	return role
 }

@@ -7,7 +7,8 @@
     <div class="error-banner">{{.Error}}</div>
     {{end}}
 
-    <form action="/post/create" method="POST" class="post-form">
+    <form action="/post/create" method="POST" class="post-form" enctype="multipart/form-data">
+
 
         <div class="form-group">
             <label for="title">Title</label>
@@ -32,9 +33,26 @@
                 {{end}}
             </div>
         </div>
+
+        <div class="form-group">
+            <label for="image">Image (optional - JPEG, PNG, GIF, WebP - max 10MB)</label>
+            <div class="file-input-wrapper">
+                <input type="file" id="image" name="image" accept="image/jpeg,image/png,image/gif,image/webp" class="file-input">
+                <label for="image" class="file-label">📎 Choose image</label>
+                <span class="file-name" id="file-name">No file chosen</span>
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-primary">Publish Post</button>
     </form>
 
  </div>
+
+ <script>
+    document.getElementById('image').addEventListener('change', function() {
+        const name = this.files[0] ? this.files[0].name : 'No file chosen';
+        document.getElementById('file-name').textContent = name
+    });
+ </script>
 
  {{end}}
