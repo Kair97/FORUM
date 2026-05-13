@@ -17,6 +17,9 @@ import (
 // It returns a *sql.DB connection pool ready for use.
 // The caller (main.go) is responsible for closing it with db.Close().
 func Init(dbPath string, schemaPath string) (*sql.DB, error) {
+	// if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+	// 	return nil, fmt.Errorf("failed to create database directory: %w", err)
+	// }
 
 	// sql.Open does not actually connect to the database yet.
 	// It just validates the arguments and prepares the connection pool.

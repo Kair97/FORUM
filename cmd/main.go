@@ -16,7 +16,7 @@ import (
 
 func main() {
 
-	db, err := database.Init("./internal/database/forum.db", "./migrations/schema.sql")
+	db, err := database.Init("./database/forum.db", "./migrations/schema.sql")
 	if err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
