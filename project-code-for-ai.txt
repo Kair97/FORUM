@@ -1,0 +1,3779 @@
+﻿FORUM PROJECT CODE SNAPSHOT
+Root: C:\Users\orynb\Desktop\Tomorrow\Forum\forum
+Generated: 2026-05-13 21:10:38
+
+Included files:
+- .gitignore
+- .\build.sh
+- .\cmd\main.go
+- .\docker-compose.yml
+- .\Dockerfile
+- .\go.mod
+- .\go.sum
+- .\internal\auth\auth.go
+- .\internal\database\database.go
+- .\internal\handlers\admin.go
+- .\internal\handlers\auth.go
+- .\internal\handlers\comments.go
+- .\internal\handlers\likes.go
+- .\internal\handlers\moderation.go
+- .\internal\handlers\posts.go
+- .\internal\middleware\middleware.go
+- .\internal\models\models.go
+- .\internal\utils\utils.go
+- .\migrations\schema.sql
+- .\web\static\css\style.css
+- .\web\templates\admin.html
+- .\web\templates\base.html
+- .\web\templates\create-post.html
+- .\web\templates\error.html
+- .\web\templates\index.html
+- .\web\templates\login.html
+- .\web\templates\post.html
+- .\web\templates\register.html
+
+============================================================
+
+FILE: .gitignore
+------------------------------------------------------------
+.gocache
+internal/database/forum.db
+
+============================================================
+
+FILE: .\build.sh
+------------------------------------------------------------
+#!/bin/bash
+
+set -e
+
+echo "Building Docker image..."
+docker build -t forum .
+
+echo "Stopping existing container if running..."
+docker stop forum-app 2>/dev/null || true 
+docker rm forum-app 2>/dev/null || true 
+
+echo "Starting the container..."
+
+docker run -d \
+  --name forum-app \
+  -p 8080:8080 \
+  -v "$(pwd -W)/database:/app/database" \
+  -v "$(pwd -W)/web/static/uploads:/app/web/static/uploads" \
+  forum
+
+echo ""
+echo "Forum is running at http://localhost:8080"
+echo ""
+
+
+============================================================
+
+FILE: .\cmd\main.go
+------------------------------------------------------------
+// cmd/main.go
+// Entry point of the forum application.
+// Wires together the database, routes, and HTTP server.
+
+package main
+
+import (
+	"fmt"
+	"forum/internal/database"
+	"forum/internal/handlers"
+	"forum/internal/middleware"
+	"forum/internal/utils"
+	"log"
+	"net/http"
+)
+
+func main() {
+
+	db, err := database.Init("./database/forum.db", "./migrations/schema.sql")
+	if err != nil {
+		log.Fatal("Failed to initialize database:", err)
+	}
+	handler := middleware.SecurityHeaders(http.DefaultServeMux)
+
+	defer db.Close()
+
+	log.Println("Database initialized successfully")
+
+	// Serve static files (CSS, JS, uploads) from web/static/.
+	// http.StripPrefix removes "/static" from the URL before looking up the file.
+	// So /static/css/style.css â†’ web/static/css/style.css on disk.
+	fs := http.FileServer(http.Dir("web/static"))
+	http.Handle("/static/", http.StripPrefix("/static/", fs))
+
+	http.HandleFunc("/mod/delete-post", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireModerator(handlers.DeletePostPOST(db), db)(w, r)
+	})
+	http.HandleFunc("/mod/delete-comment", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireModerator(handlers.DeleteAnyCommentPOST(db), db)(w, r)
+	})
+
+	http.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAdmin(handlers.AdminPanelGET(db), db)(w, r)
+	})
+	http.HandleFunc("/admin/set-role", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAdmin(handlers.SetRolePOST(db), db)(w, r)
+	})
+	// ----------- Auth routes -----------------------------------------------
+	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handlers.RegisterGET(db)(w, r)
+		case http.MethodPost:
+			handlers.RegisterPOST(db)(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handlers.LoginGET(db)(w, r)
+		case http.MethodPost:
+			handlers.LoginPOST(db)(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	http.HandleFunc("/comment/delete", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAuth(handlers.DeleteCommentPOST(db), db)(w, r)
+	})
+
+	http.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			handlers.LogoutPOST(db)(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// ----------- Post routes -----------------------------------------------
+
+	// Homepage â€” optional auth (guests can view)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		middleware.OptionalAuth(handlers.IndexGET(db), db)(w, r)
+	})
+
+	// Single post page - optional auth (guests can view)
+	http.HandleFunc("/post", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.OptionalAuth(handlers.PostGET(db), db)(w, r)
+	})
+
+	// Create post - Require auth
+	http.HandleFunc("/post/create", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			middleware.RequireAuth(handlers.CreatePostGET(db), db)(w, r)
+		case http.MethodPost:
+			middleware.RequireAuth(handlers.CreatePostPOST(db), db)(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// Create comment - requires auth
+	http.HandleFunc("/comment/create", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAuth(handlers.CreateCommentPOST(db), db)(w, r)
+	})
+
+	// Like/Dislike - requires auth
+	http.HandleFunc("/like", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAuth(handlers.ToggleLikePOST(db), db)(w, r)
+	})
+
+	http.HandleFunc("/protected", func(w http.ResponseWriter, r *http.Request) {
+		middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+			userID, _ := utils.GetUserID(r)
+			fmt.Fprintf(w, "You reached a protected route. Your user ID is: %d", userID)
+		}, db)(w, r)
+	})
+
+	log.Println("Server starting on http://localhost:8080")
+
+	err = http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Fatal("Server failed to start:", err)
+	}
+
+}
+
+
+============================================================
+
+FILE: .\docker-compose.yml
+------------------------------------------------------------
+  version: '3.8'
+
+  services: 
+    forum: 
+      build: .
+      ports: 
+      - "8080:8080"
+      volumes: 
+      - ./database:/app/database
+      - ./web/static/uploads:/app/web/static/uploads
+      restart: unless-stopped
+
+============================================================
+
+FILE: .\Dockerfile
+------------------------------------------------------------
+# Multi-stage build for the forum Go application.
+
+# Stage 1: Builder
+FROM golang:1.25.3-alpine AS builder
+
+RUN apk add --no-cache gcc musl-dev
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+
+RUN go mod download 
+
+COPY . . 
+
+RUN CGO_ENABLED=1 GOOS=linux go build -o forum ./cmd/
+
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates sqlite-libs
+
+WORKDIR /app
+
+COPY --from=builder /app/forum .
+
+COPY web/ web/
+
+COPY migrations/ migrations/
+
+RUN mkdir -p database
+
+RUN mkdir -p web/static/uploads
+
+EXPOSE 8080
+
+CMD ["./forum"]
+
+============================================================
+
+FILE: .\go.mod
+------------------------------------------------------------
+module forum
+
+go 1.25.3
+
+require (
+	github.com/gofrs/uuid v4.4.0+incompatible // indirect
+	github.com/mattn/go-sqlite3 v1.14.44 // indirect
+	golang.org/x/crypto v0.50.0 // indirect
+)
+
+
+============================================================
+
+FILE: .\go.sum
+------------------------------------------------------------
+github.com/gofrs/uuid v4.4.0+incompatible h1:3qXRTX8/NbyulANqlc0lchS1gqAVxRgsuW1YrTJupqA=
+github.com/gofrs/uuid v4.4.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRxnplIgP/c0N/04lM=
+github.com/mattn/go-sqlite3 v1.14.44 h1:3VSe+xafpbzsLbdr2AWlAZk9yRHiBhTBakioXaCKTF8=
+github.com/mattn/go-sqlite3 v1.14.44/go.mod h1:pjEuOr8IwzLJP2MfGeTb0A35jauH+C2kbHKBr7yXKVQ=
+golang.org/x/crypto v0.50.0 h1:zO47/JPrL6vsNkINmLoo/PH1gcxpls50DNogFvB5ZGI=
+golang.org/x/crypto v0.50.0/go.mod h1:3muZ7vA7PBCE6xgPX7nkzzjiUq87kRItoJQM1Yo8S+Q=
+
+
+============================================================
+
+FILE: .\internal\auth\auth.go
+------------------------------------------------------------
+package auth
+
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/gofrs/uuid"
+	"golang.org/x/crypto/bcrypt"
+)
+
+var lolError = errors.New("LOL")
+
+// bcryptCost controls how many rounds bcrypt runs.
+// 12 is the recommended minimum for production as of 2024.
+// Higher = slower to hash = harder to brute force.
+// If you change this, existing hashes still work â€” bcrypt
+// reads the cost from the stored hash string automatically.
+const bcryptRounds = 12
+
+// SessionDuration controls how long a session stays valid after login.
+// After this duration, the user must log in again.
+const SessionDuration = 24 * time.Hour
+
+// HashPassword takes a plain text password and returns a bcrypt hash.
+// The returned hash is safe to store directly in the database.
+// A new random salt is generated automatically on every call â€”
+// calling this twice with the same password produces two different hashes,
+// both of which will verify correctly against the original password.
+func HashPassword(password string) (string, error) {
+	// bcrypt.GenerateFromPassword takes a []byte and the cost factor.
+	// It handles salting internally â€” we never touch the salt.
+	hashByte, err := bcrypt.GenerateFromPassword([]byte(password), bcryptRounds)
+	if err != nil {
+		return "", fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// The hash is returned as []byte â€” convert to string for storage.
+	return string(hashByte), nil
+}
+
+// CheckPassword compares a plain text password against a stored bcrypt hash.
+// Returns nil if they match, an error if they do not.
+// IMPORTANT: Do not use this error to display "wrong password" to users â€”
+// always show a generic "invalid credentials" message to prevent
+// revealing whether the email or password was wrong (user enumeration attack).
+func CheckPassword(password, hash string) error {
+	// bcrypt.CompareHashAndPassword extracts the salt and cost from the
+	// stored hash, re-hashes the plain text password with those parameters,
+	// and compares the result. This is the ONLY correct way to verify.
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	if err != nil {
+		return fmt.Errorf("password	does not match: %w", err)
+	}
+
+	return nil
+}
+
+// CreateSession generates a UUID session token, stores it in the database,
+// and sets it as a cookie on the HTTP response.
+// Call this immediately after a successful login or registration.
+func CreateSession(w http.ResponseWriter, db *sql.DB, userID int64) error {
+
+	_, err := db.Exec("DELETE FROM sessions WHERE user_id = ?", userID)
+	if err != nil {
+		return fmt.Errorf("failed to clear old session: %w", err)
+	}
+
+	// Generate a new random UUID for the session token.
+	// uuid.NewV4() uses the system's cryptographically secure random source.
+	token, err := uuid.NewV4()
+	if err != nil {
+		return fmt.Errorf("failed to generate session token: %w", err)
+	}
+
+	// Calculate the expiration time.
+	expiresAt := time.Now().Add(SessionDuration)
+
+	// Insert the session into the database.
+	// We store the token as a string using token.String() which gives us
+	// the standard UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+	_, err = db.Exec(
+		"INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)",
+		userID, token.String(), expiresAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to store session: %w", err)
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_token",      // the name our middleware will look for
+		Value:    token.String(),       // the UUID we just stored in the DB
+		Expires:  expiresAt,            //browser will delete cookie after this time
+		HttpOnly: true,                 //JavaScript cannot read this cookie - prevents XSS theft
+		SameSite: http.SameSiteLaxMode, //protects against CSRF on cross-site requests
+		Path:     "/",                  //cookie is sent on all paths
+	})
+
+	return nil
+}
+
+// ValidateSession reads the session cookie from the request,
+// looks it up in the database, and returns the user_id if valid.
+// Returns an error if the cookie is missing, the session does not exist,
+// or the session has expired.
+func ValidateSession(r *http.Request, db *sql.DB) (int64, error) {
+	// Read the session cookie fromt he incoming request
+	cookie, err := r.Cookie("session_token")
+	if err != nil {
+		// http.ErrNoCookie is returned when the cookie does not exist
+		// This is the normal case for logged-out users - not a server error
+		return 0, fmt.Errorf("no session cookie: %w", err)
+	}
+
+	// Look up the session in the database
+	// We check expires_at > datetime('now') in SQL so the database
+	// does the expiry check automatically with the lookup
+	var userID int64
+	err = db.QueryRow(
+		"SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')",
+		cookie.Value,
+	).Scan(&userID)
+
+	if err == sql.ErrNoRows {
+		// The token does not exist or has expired
+		return 0, fmt.Errorf("session not found or expired")
+	}
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to query session: %w", err)
+	}
+
+	return userID, nil
+
+}
+
+// DeleteSession removes a session from the database and clears the cookie.
+// Call this on logout.
+func DeleteSession(w http.ResponseWriter, r *http.Request, db *sql.DB) error {
+	// Read the current session cookie
+	cookie, err := r.Cookie("session_token")
+	if err != nil {
+		// No cookies means already logged out - not an error worth returning
+		return nil
+	}
+
+	// Delete the session from the database.
+	_, err = db.Exec("DELETE FROM sessions WHERE token = ?", cookie.Value)
+	if err != nil {
+		return fmt.Errorf("failed to delete sessions: %w", err)
+	}
+
+	// Overwrite the cookie with an expired one to force the browser to delete it.
+	// Setting MaxAge = -1 tells the browser to delete the cookie immediately.
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_token",
+		Value:    "",
+		Expires:  time.Unix(0, 0), // expired in the past
+		MaxAge:   -1,              // instruct browser to delete immediately
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+	})
+
+	return nil
+}
+
+
+============================================================
+
+FILE: .\internal\database\database.go
+------------------------------------------------------------
+package database
+
+import (
+	"database/sql"
+	"fmt"
+	"forum/internal/models"
+	"os"
+
+	// Blank import: we do not use this package directly in our code.
+	// But importing it runs its init() function, which registers the
+	// "sqlite3" driver with Go's database/sql package.
+	// Without this line, sql.Open("sqlite3", ...) would fail.
+	_ "github.com/mattn/go-sqlite3"
+)
+
+// Init opens the SQLite database file and initializes the schema.
+// It returns a *sql.DB connection pool ready for use.
+// The caller (main.go) is responsible for closing it with db.Close().
+func Init(dbPath string, schemaPath string) (*sql.DB, error) {
+	// if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+	// 	return nil, fmt.Errorf("failed to create database directory: %w", err)
+	// }
+
+	// sql.Open does not actually connect to the database yet.
+	// It just validates the arguments and prepares the connection pool.
+	// The first real connection happens on the first query.
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// db.Ping() forces an actual connection to the database.
+	// This is where we find out if the file path is valid and accessible.
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// SQLite does not enforce foreign keys by default.
+	// We must enable it explicitly on every new connection.
+	// Without this, ON DELETE CASCADE and FK constraints are silently ignored.
+	_, err = db.Exec("PRAGMA foreign_keys = ON;")
+	if err != nil {
+		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
+	// Read the schema.sql file from disk.
+	// os.ReadFile returns the entire file as a []byte slice.
+	schema, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read schema file: %w", err)
+	}
+
+	// Execute the schema SQL.
+	// db.Exec runs a SQL statement and discards the result rows.
+	// Because every statement uses CREATE TABLE IF NOT EXISTS,
+	// this is safe to run every time â€” it will not overwrite existing data.
+	_, err = db.Exec(string(schema))
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	return db, nil
+
+}
+
+func getUserVoteForPost(db *sql.DB, userID, postID int64) int {
+	if userID == 0 {
+		return 0
+	}
+
+	var islike bool
+	err := db.QueryRow(
+		"SELECT is_like FROM likes WHERE user_id = ? AND post_id = ?",
+		userID, postID,
+	).Scan(&islike)
+
+	if err != nil {
+		return 0
+	}
+
+	if islike {
+		return 1
+	}
+	return -1
+
+}
+
+func getUserVoteForComment(db *sql.DB, userID, commentID int64) int {
+	if userID == 0 {
+		return 0
+	}
+	var isLike bool
+	err := db.QueryRow(
+		"SELECT is_like FROM likes WHERE user_id = ? AND comment_id = ?",
+		userID, commentID,
+	).Scan(&isLike)
+	if err != nil {
+		return 0
+	}
+	if isLike {
+		return 1
+	}
+	return -1
+}
+
+// -----------------------------------------------------------
+// CATEGORIES QUERIES
+// -----------------------------------------------------------
+// GetAllCategories returns every category row
+func GetAllCategories(db *sql.DB) ([]models.Category, error) {
+	rows, err := db.Query("SELECT id, name FROM categories ORDER BY name")
+	if err != nil {
+		return nil, fmt.Errorf("failed to query categories: %w", err)
+	}
+
+	// defer rows.Close() ensures we release the database connection
+	// when this function returns, even if we return early due to an error
+	defer rows.Close()
+
+	var categories []models.Category
+
+	// rows.Next() advances the cursor one row at a time.
+	// It returns false when there are no more rows or an error occurred.
+	for rows.Next() {
+		var c models.Category
+		if err := rows.Scan(&c.ID, &c.Name); err != nil {
+			return nil, fmt.Errorf("failed to scan category: %w", err)
+		}
+		categories = append(categories, c)
+	}
+
+	// rows.Err() returns any error that occurred during the iteration.
+	// We always need to check this afte a rows.Next() loop.
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("category rows error: %w", err)
+
+	}
+
+	return categories, nil
+}
+
+// getCategoriesForPost(db *sql.DB) returns all category names attached to a post.
+// This is called for each post when building the post list.
+func getCategoriesForPost(db *sql.DB, postID int64) ([]string, error) {
+	rows, err := db.Query(`
+		SELECT c.name
+		FROM categories c
+		JOIN post_categories pc ON c.id = pc.category_id
+		WHERE pc.post_id = ?
+		ORDER BY c.name`,
+		postID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query post categories: %w", err)
+	}
+
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("failed to scan category name: %w", err)
+		}
+		names = append(names, name)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("category rows error: %w", err)
+	}
+
+	return names, nil
+}
+
+// -----------------------------------------------------------
+// POST QUERIES
+// -----------------------------------------------------------
+
+// CreatePost inserts a new post and links it to its categories
+// Uses a transaction - either both the post INSERT and the category
+// links INSERT succeed together, or neither does.
+// This prevents posts existing with no categories attached.
+func CreatePost(db *sql.DB, userID int64, title, content, imagePath string, categoryIDs []int64) (int64, error) {
+	// Begin a transaction
+	// A transaction groups multiple queries into one atomic operation.
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// defer a rollback. If we return early due to any error,
+	// the transaction is rolled back automatically.
+	// If we call tx.Commit() successfully, this Rollback becomes a no-op.
+	defer tx.Rollback()
+
+	result, err := tx.Exec(
+		`INSERT INTO posts (user_id, title, content, image_path)
+		 VALUES (?, ?, ?, ?)`,
+		userID, title, content, imagePath,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert post: %w", err)
+	}
+
+	// Get the auto-generated ID of the post we just inserted.
+	postID, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get post ID: %w", err)
+	}
+
+	// Insert one row into post_categories foe each selected category.
+	for _, categoryID := range categoryIDs {
+		_, err := tx.Exec(
+			"INSERT INTO post_categories (post_id, category_id) VALUES (?, ?)",
+			postID, categoryID,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to link category: %w", err)
+		}
+	}
+
+	// Commit the transaction - makes all changes permanent.
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return postID, nil
+}
+
+// GetAllPosts returns all posts ordered newest first.
+// Each post includes the author's username and like/dislike counts.
+// Categories are fetched seperately per post.
+func GetAllPosts(db *sql.DB, userID int64) ([]models.Post, error) {
+	rows, err := db.Query(`
+		SELECT 
+			p.id,
+			p.user_id, 
+			u.username, 
+			p.title,
+			p.content,
+			p.image_path,
+			p.created_at,
+			-- COUNT with FILTER counts only rows where condition is true 
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_count, 
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_count
+		FROM posts p
+		-- JOIN users to get the author's username 
+		JOIN users u ON p.user_id = u.id
+		-- LEFT JOIN likes so posts with zero ikes still appear 
+		LEFT JOIN likes l ON p.id = l.post_id
+		GROUP BY p.id 
+		ORDER BY p.created_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query posts: %w", err)
+	}
+	defer rows.Close()
+
+	return scanPosts(db, rows, userID)
+}
+
+// GetPostByID returns a single post by its ID with full details and comments.
+// Returns sql.ErrNoRows if the post does not exist.
+func GetPostByID(db *sql.DB, postID, userID int64) (models.Post, []models.Comment, error) {
+	var p models.Post
+
+	err := db.QueryRow(`
+		SELECT 
+			p.id,
+			p.user_id,
+			u.username,
+			p.title,
+			p.content,
+			p.image_path, 
+			p.created_at,
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_count,
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_count
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		LEFT JOIN likes l ON p.id = l.post_id
+		WHERE p.id = ?
+		GROUP BY p.id`,
+		postID,
+	).Scan(
+		&p.ID,
+		&p.UserID,
+		&p.Username,
+		&p.Title,
+		&p.Content,
+		&p.ImagePath,
+		&p.CreatedAt,
+		&p.LikeCount,
+		&p.DislikeCount,
+	)
+
+	if err == sql.ErrNoRows {
+		// Return the sentinel error directly so the handler can
+		// distinguish "not found" from a real database failure
+		return p, nil, sql.ErrNoRows
+	}
+
+	if err != nil {
+		return p, nil, fmt.Errorf("failed to query post: %w", err)
+	}
+
+	// Fetch categories for this post.
+	categories, err := getCategoriesForPost(db, p.ID)
+	if err != nil {
+		return p, nil, fmt.Errorf("failed to get categories: %w", err)
+	}
+	p.Categories = categories
+
+	// Fetch comments for this post.
+	comments, err := GetCommentsByPostID(db, postID, userID)
+	if err != nil {
+		return p, nil, fmt.Errorf("failed to get comments: %w", err)
+	}
+	p.UserVote = getUserVoteForPost(db, userID, p.ID)
+
+	return p, comments, nil
+}
+
+// -----------------------------------------------------------
+// COMMENT QUERIES
+// -----------------------------------------------------------
+
+// CreateComment inserts a new comment on a post.
+// Returns the new comment's ID
+func CreateComment(db *sql.DB, postID, userID int64, content string) (int64, error) {
+	result, err := db.Exec(
+		`INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)`,
+		postID, userID, content,
+	)
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert comment: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get comment ID: %w", err)
+	}
+
+	return id, nil
+}
+
+// GetCommentsByPostID returns all comments for a given post,
+// ordered oldest first so conversation reads top to bottom.
+// Each comment includes the author's username and like/dislike counts.
+func GetCommentsByPostID(db *sql.DB, postID, userID int64) ([]models.Comment, error) {
+	rows, err := db.Query(
+		`SELECT 
+			c.id,
+			c.post_id,
+			c.user_id,
+			u.username,
+			c.content, 
+			c.created_at,
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_counts,
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_counts
+		FROM comments c
+		JOIN users u ON c.user_id = u.id
+		-- LEFT JOIN so comments with zero likes still appear
+		LEFT JOIN likes l ON c.id = l.comment_id
+		WHERE c.post_id = ?
+		GROUP BY c.id
+		ORDER BY c.created_at ASC`,
+		postID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query comments: %w", err)
+	}
+
+	defer rows.Close()
+
+	var comments []models.Comment
+
+	for rows.Next() {
+		var c models.Comment
+
+		err := rows.Scan(
+			&c.ID,
+			&c.PostID,
+			&c.UserID,
+			&c.Username,
+			&c.Content,
+			&c.CreatedAt,
+			&c.LikeCount,
+			&c.DislikeCount,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan comment: %w", err)
+		}
+		c.UserVote = getUserVoteForComment(db, userID, c.ID)
+
+		comments = append(comments, c)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("comments row error: %w", err)
+	}
+
+	return comments, nil
+}
+
+// -----------------------------------------------------------
+// LIKE QUERIES
+// -----------------------------------------------------------
+
+// ToggleLike handles the full like/dislike toggle logic for posts and comments.
+// targetType must be either "post" or "comment".
+// isLike: true = like, false = dislike.
+//
+// Logic:
+//
+//			-No existing vote -> INSERT
+//	     - Existing vote, same value -> 	DELETE (toggle, off)
+//	 	- Existing vote, different value -> UPDATAE (switch direction)
+func ToggleLike(db *sql.DB, userID, targetID int64, targetType string, isLike bool) error {
+	// Build the WHERE clause dynamically based on whether this is
+	// a post like or a comment like.
+	var targetColumn string
+	if targetType == "post" {
+		targetColumn = "post_id"
+	} else if targetType == "comment" {
+		targetColumn = "comment_id"
+	} else {
+		return fmt.Errorf("Invalid target type: %s", targetType)
+	}
+
+	// Check if like/dislike row already exists for this user + target.
+	// We read the current is_like value so we can decide what to do.
+	var existingIsLike bool
+	var existingID int64
+
+	err := db.QueryRow(
+		fmt.Sprintf(
+			"SELECT id, is_like FROM likes WHERE user_id = ? AND %s = ?",
+			targetColumn,
+		),
+		userID, targetID,
+	).Scan(&existingID, &existingIsLike)
+
+	if err == sql.ErrNoRows {
+		// No existing vote - INSERT a new like row.
+		// Set the appropriate column and leave the other NULL.
+		if targetType == "post" {
+			_, err = db.Exec(
+				`INSERT INTO likes (user_id, post_id, comment_id, is_like)
+				VALUES (?, ?, NULL, ?)`,
+				userID, targetID, isLike,
+			)
+		} else {
+			_, err = db.Exec(
+				`INSERT INTO likes (user_id, post_id, comment_id, is_like)
+				VALUES (?, NULL, ?, ?)`,
+				userID, targetID, isLike,
+			)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to insert like: %w", err)
+		}
+
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to query existing like: %w", err)
+	}
+
+	// Row exists. Decide: toggle off or switch direction.
+	isLikeInt := 0
+	if isLike {
+		isLikeInt = 1
+	}
+	existingIsLikeInt := 0
+	if existingIsLike {
+		existingIsLikeInt = 1
+	}
+
+	if isLikeInt == existingIsLikeInt {
+		// Same value clicked again - toggle off by deleting the row.
+		_, err = db.Exec(
+			"DELETE FROM likes WHERE id = ?", existingID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to delete like: %w", err)
+		}
+		return nil
+	}
+
+	_, err = db.Exec(
+		"UPDATE likes SET is_like = ? WHERE id = ?",
+		isLike, existingID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update like: %w", err)
+	}
+
+	return nil
+}
+
+// GetUserLikeStatus returns whether the user liked or disliked a target.
+// Returns exists bool, isLike bool.
+// Used by template to show the correct button state (active/inactive).
+func GetUserLikeStatus(db *sql.DB, userID, targetID int64, targetType string) (bool, bool, error) {
+	var targetColumn string
+	if targetType == "post" {
+		targetColumn = "post_id"
+	} else if targetType == "comment" {
+		targetColumn = "comment_id"
+	} else {
+		return false, false, fmt.Errorf("Invalid type of target: %s", targetType)
+	}
+
+	var isLike bool
+	err := db.QueryRow(
+		fmt.Sprintf(
+			"SELECT is_like FROM likes WHERE user_id = ? AND %s = ?",
+			targetColumn,
+		), userID, targetID,
+	).Scan(&isLike)
+
+	if err == sql.ErrNoRows {
+		// User has not voted on this target
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("failed to query like status: %w", err)
+	}
+
+	// exists=true, isLike=whatever they voted
+	return true, isLike, nil
+}
+
+// -----------------------------------------------------------
+// FILTER QUERIES
+// -----------------------------------------------------------
+
+// GetPostsByCategory returns all posts belonging to a specific category.
+// Available to all even to guests.
+func GetPostsByCategory(db *sql.DB, categoryID int64, userID int64) ([]models.Post, error) {
+	rows, err := db.Query(`
+		SELECT 
+			p.id,
+			p.user_id,
+			u.username,
+			p.title,
+			p.content,
+			p.image_path,
+			p.created_at,
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_count,
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_count
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		-- JOIN post_categories to filter by category
+		JOIN post_categories pc ON p.id = pc.post_id
+		LEFT JOIN likes l ON p.id = l.post_id
+		WHERE pc.category_id = ? 
+		GROUP BY p.id 
+		ORDER BY p.created_at DESC`,
+		categoryID)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query posts by category: %w", err)
+	}
+
+	defer rows.Close()
+
+	return scanPosts(db, rows, userID)
+}
+
+// GetPostsByUser returns all posts created by a specific user.
+// Used for the "my posts" filter - logged-in users only.
+func GetPostsByUser(db *sql.DB, userID int64) ([]models.Post, error) {
+	rows, err := db.Query(`
+		SELECT 
+			p.id,
+			p.user_id,
+			u.username, 
+			p.title,
+			p.content,
+			p.image_path,
+			p.created_at,
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_count,
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_count
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		LEFT JOIN likes l ON p.id = l.post_id
+		WHERE p.user_id = ?
+		GROUP BY p.id
+		ORDER BY p.created_at DESC`,
+		userID,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query posts by user: %w", err)
+	}
+
+	defer rows.Close()
+
+	return scanPosts(db, rows, userID)
+}
+
+// GetPostsLikedByUser returns all posts that a specific user has liked.
+// User for the "liked posts" filter - logged-in users only.
+func GetPostsLikedByUser(db *sql.DB, userID int64) ([]models.Post, error) {
+	rows, err := db.Query(`
+		SELECT 
+			p.id,
+			p.user_id,
+			u.username,
+			p.title,
+			p.content,
+			p.image_path,
+			p.created_at,
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_counts,
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_counts
+		FROM posts p 
+		JOIN users u ON p.user_id = u.id
+		LEFT JOIN likes l ON p.id = l.post_id
+		-- Subquery: only include posts where this user has a like (is_like=1)row
+		WHERE p.id IN (
+			SELECT post_id FROM likes
+			WHERE user_id = ? AND is_like = 1 AND post_id IS NOT NULL
+		)
+		GROUP BY p.id
+		ORDER BY p.created_at DESC`,
+		userID,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query liked posts: %w", err)
+	}
+
+	defer rows.Close()
+
+	return scanPosts(db, rows, userID)
+}
+
+// scanPosts is a shared helper that scans a *sql.Rows result into []models.Post.
+// All four post queries (GetAllPosts, GetPostsByCategory, GetPostsByUser,
+// GetPostsLikedByUser) return the same columns in the same order â€”
+// so we extract the scanning logic once here instead of duplicating it four times.
+func scanPosts(db *sql.DB, rows *sql.Rows, userID int64) ([]models.Post, error) {
+	var posts []models.Post
+
+	for rows.Next() {
+		var p models.Post
+		err := rows.Scan(
+			&p.ID,
+			&p.UserID,
+			&p.Username,
+			&p.Title,
+			&p.Content,
+			&p.ImagePath,
+			&p.CreatedAt,
+			&p.LikeCount,
+			&p.DislikeCount,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan post: %w", err)
+		}
+
+		categories, err := getCategoriesForPost(db, p.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get categories for post %d: %w", p.ID, err)
+		}
+
+		p.Categories = categories
+
+		p.UserVote = getUserVoteForPost(db, userID, p.ID)
+
+		posts = append(posts, p)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("posts rows error: %w", err)
+	}
+
+	return posts, nil
+}
+
+func DeleteComment(db *sql.DB, commentID, userID int64) error {
+	result, err := db.Exec(
+		"DELETE FROM comments WHERE id = ? AND user_id = ?",
+		commentID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete comment")
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to checl RowsAffected()")
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("comment not found or not owned by the user")
+	}
+	return nil
+
+}
+
+// DeletePost deletes any post by ID (moderator/admin action).
+func DeletePost(db *sql.DB, postID int64) error {
+	result, err := db.Exec("DELETE FROM posts WHERE id = ?", postID)
+	if err != nil {
+		return fmt.Errorf("failed to delete post: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("post not found")
+	}
+	return nil
+}
+
+// DeleteAnyComment deletes any comment by ID (moderator/admin action).
+// Different from DeleteComment which checks ownership.
+func DeleteAnyComment(db *sql.DB, commentID int64) error {
+	result, err := db.Exec("DELETE FROM comments WHERE id = ?", commentID)
+	if err != nil {
+		return fmt.Errorf("failed to delete comment: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("comment not found")
+	}
+	return nil
+}
+
+// GetAllUsers returns all users â€” for the admin panel.
+func GetAllUsers(db *sql.DB) ([]models.User, error) {
+	rows, err := db.Query(
+		"SELECT id, email, username, role, created_at FROM users ORDER BY created_at DESC",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Email, &u.Username, &u.Role, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// SetUserRole updates a user's role. Valid values: "user", "moderator", "admin".
+func SetUserRole(db *sql.DB, userID int64, role string) error {
+	if role != "user" && role != "moderator" && role != "admin" {
+		return fmt.Errorf("invalid role: %s", role)
+	}
+	_, err := db.Exec("UPDATE users SET role = ? WHERE id = ?", role, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update role: %w", err)
+	}
+	return nil
+}
+
+
+============================================================
+
+FILE: .\internal\handlers\admin.go
+------------------------------------------------------------
+package handlers
+
+
+============================================================
+
+FILE: .\internal\handlers\auth.go
+------------------------------------------------------------
+package handlers
+
+import (
+	"database/sql"
+	"forum/internal/auth"
+	"forum/internal/models"
+	"forum/internal/utils"
+	"net/http"
+	"strings"
+)
+
+const login = "web/templates/login.html"
+const register = "web/templates/register.html"
+
+func RegisterGET(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		utils.RenderTemplate(w, register, models.Template{})
+	}
+}
+
+func RegisterPOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// r.ParseFrom() parses the request body as form data
+		// And must be called before r.FormValu() will work
+		// returns error if the body is malformed
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+
+		email := strings.TrimSpace(r.FormValue("email"))
+		username := strings.TrimSpace(r.FormValue("username"))
+		password := r.FormValue("password")
+
+		if email == "" || username == "" || password == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, register, models.Template{
+				Error: "All fields are required",
+			})
+
+			return
+		}
+
+		// Length limits â€” prevent database abuse and UI breakage.
+		if len(email) > 254 {
+			http.Error(w, "Email too long", http.StatusBadRequest)
+			return
+		}
+		if len(username) > 30 {
+			http.Error(w, "Username must be 30 characters or less", http.StatusBadRequest)
+			return
+		}
+		if len(password) > 72 {
+			// bcrypt silently truncates passwords over 72 bytes.
+			// We reject them explicitly so the user knows the limit.
+			http.Error(w, "Password must be 72 characters or less", http.StatusBadRequest)
+			return
+		}
+
+		if len(password) < 6 {
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, register, models.Template{
+				Error: "Password is too short!",
+			})
+
+			return
+		}
+
+		// Check weather email already used or not
+		var existingID int64
+		err := db.QueryRow(
+			"SELECT id FROM users WHERE email = ?", email,
+		).Scan(&existingID)
+
+		if err == nil {
+			http.Error(w, "Email already registered", http.StatusBadRequest)
+			return
+		}
+		if err != sql.ErrNoRows {
+			http.Error(w, "Interval Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		passwordHash, err := auth.HashPassword(password)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Insert new user to database
+		result, err := db.Exec(
+			"INSERT INTO users (email, username, password_hash, role) VALUES (?, ?, ?, ?)", email, username, passwordHash, "user",
+		)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		userID, err := result.LastInsertId()
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		if err := auth.CreateSession(w, db, userID); err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+
+	}
+}
+
+func LoginGET(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		utils.RenderTemplate(w, login, models.Template{})
+	}
+}
+
+func LoginPOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+
+		ip := r.RemoteAddr
+		if i := strings.LastIndex(ip, ":"); i != -1 {
+			ip = ip[:i]
+		}
+
+		if !utils.LoginLimiter.Allow(ip) {
+			utils.RenderTemplate(w, login, models.Template{
+				Error: "Too many login attempts. Please wait a minute and try again.",
+			})
+			return
+		}
+
+		email := strings.TrimSpace(r.FormValue("email"))
+		password := r.FormValue("password")
+
+		if email == "" || password == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, login, models.Template{
+				Error: "All fields are required!",
+			})
+			return
+		}
+
+		var user models.User
+		err := db.QueryRow(
+			`Select id, email, username, password_hash,role
+			from users where email = ?`,
+			email,
+		).Scan(&user.ID, &user.Email, &user.Username, &user.PasswordHash, &user.Role)
+
+		if err == sql.ErrNoRows {
+			// No user found with this email
+			// Important: we use same error message as wrong password
+			// So that it prevents user enumeration --> an attacker cannot tell
+			// whether email exists or password was wrong
+			w.WriteHeader(http.StatusUnauthorized)
+			utils.RenderTemplate(w, login, models.Template{
+				Error: "Invalid email or password",
+			})
+			return
+		}
+
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Verify the password
+		if err := auth.CheckPassword(password, user.PasswordHash); err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			utils.RenderTemplate(w, login, models.Template{
+				Error: "Invalid email or password",
+			})
+			return
+		}
+		// Password is correct. Create a new session for this user
+		if err := auth.CreateSession(w, db, user.ID); err != nil {
+			http.Error(w, "Interncal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Login is successful - redirect to homepage
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	}
+}
+
+// Logout deletes the session and clears the cookie.
+// We use POST for logout - not GET - because logout is state changing action.
+func LogoutPOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// DeleteSession handles both the DB deletion and cookie clearing.
+		if err := auth.DeleteSession(w, r, db); err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Redirect to homepage after logout
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	}
+}
+
+
+============================================================
+
+FILE: .\internal\handlers\comments.go
+------------------------------------------------------------
+// internal/handlers/comments.go
+// Handles HTTP requests for creating comments on posts.
+
+package handlers
+
+import (
+	"database/sql"
+	"fmt"
+	"forum/internal/database"
+	"forum/internal/utils"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+// CreateCommentPOST processes a new comment form submission.
+// Requires authentication - middlware handles redirect if user not logged in.
+func CreateCommentPOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Get the ID of logged in user
+		userID, _ := utils.GetUserID(r)
+
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+
+		postIDStr := strings.TrimSpace(r.FormValue("post_id"))
+		content := strings.TrimSpace(r.FormValue("content"))
+
+		postID, err := strconv.ParseInt(postIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid post ID", http.StatusBadRequest)
+			return
+		}
+
+		// Validate comment must not be empty
+		if content == "" {
+			http.Error(w, "Comment cannot be empty", http.StatusBadRequest)
+			return
+		}
+
+		if len(content) > 2000 {
+			http.Error(w, "Comment must be 2000 characters or less", http.StatusBadRequest)
+			return
+		}
+
+		// Insert the comment into the database
+		_, err = database.CreateComment(db, postID, userID, content)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		http.Redirect(w, r, fmt.Sprintf("/post?id=%d", postID), http.StatusSeeOther)
+	}
+}
+
+func DeleteCommentPOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		userID, _ := utils.GetUserID(r)
+
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+
+		commentIDStr := r.FormValue("comment_id")
+		postIDStr := r.FormValue("post_id")
+
+		commentID, err := strconv.ParseInt(commentIDStr, 10, 64)
+		if err != nil || commentID <= 0 {
+			http.Error(w, "Invalid comment ID", http.StatusBadRequest)
+			return
+		}
+
+		postID, err := strconv.ParseInt(postIDStr, 10, 64)
+		if err != nil || postID <= 0 {
+			http.Error(w, "Invalid post ID", http.StatusBadRequest)
+			return
+		}
+
+		if err := database.DeleteComment(db, commentID, userID); err != nil {
+			http.Error(w, "Could not delete comment", http.StatusForbidden)
+			return
+		}
+
+		http.Redirect(w, r, fmt.Sprintf("/post?id=%d", postID), http.StatusSeeOther)
+
+	}
+}
+
+
+============================================================
+
+FILE: .\internal\handlers\likes.go
+------------------------------------------------------------
+package handlers
+
+import (
+	"database/sql"
+	"fmt"
+	"forum/internal/database"
+	"forum/internal/utils"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+// ToggleLikePOST processes a like or dislike action.
+// Requires authentication.
+// Accepts: target_type (post|comment), target_id, is_like (1|0)
+func ToggleLikePOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Get logged-in user form context.
+		userID, _ := utils.GetUserID(r)
+
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+
+		targetType := strings.TrimSpace(r.FormValue("target_type"))
+		targetIDStr := strings.TrimSpace(r.FormValue("target_id"))
+		isLikeStr := strings.TrimSpace(r.FormValue("is_like"))
+
+		// Validate targetType: it should be exact "post" or "comment"
+		if targetType != "post" && targetType != "comment" {
+			http.Error(w, "Invalid target type", http.StatusBadRequest)
+			return
+		}
+
+		// Parse and validate targetID.
+		targetID, err := strconv.ParseInt(targetIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid target ID", http.StatusBadRequest)
+			return
+		}
+
+		// Parse isLikeStr it should be 1(true) or 0(false)
+		if isLikeStr != "1" && isLikeStr != "0" {
+			http.Error(w, "Invalid like value", http.StatusBadRequest)
+			return
+		}
+
+		isLike := isLikeStr == "1"
+
+		if err := database.ToggleLike(db, userID, targetID, targetType, isLike); err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Redirect back to the referring page.
+		// r.FormValue("redirect") lets the form tell us where go to back to.
+		// If no redirect is specified, go to homepage
+		redirect := r.FormValue("redirect")
+		if redirect == "" {
+			redirect = "/"
+		}
+
+		// Security: only allow redirects to our own paths.
+		// This prevents open redirect attacks where an attacker could redirect
+		// users to a malicious external site after liking.
+		if !strings.HasPrefix(redirect, "/") {
+			redirect = "/"
+		}
+
+		http.Redirect(w, r, redirect, http.StatusSeeOther)
+	}
+}
+
+var _ = fmt.Sprintf
+
+
+============================================================
+
+FILE: .\internal\handlers\moderation.go
+------------------------------------------------------------
+// internal/handlers/moderation.go
+// Handles moderator and admin actions.
+
+package handlers
+
+import (
+	"database/sql"
+	"fmt"
+	"forum/internal/database"
+	"forum/internal/models"
+	"forum/internal/utils"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+// DeletePostPOST allows moderators and admins to delete any post.
+func DeletePostPOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+
+		postID, err := strconv.ParseInt(r.FormValue("post_id"), 10, 64)
+		if err != nil || postID <= 0 {
+			http.Error(w, "Invalid post ID", http.StatusBadRequest)
+			return
+		}
+
+		if err := database.DeletePost(db, postID); err != nil {
+			http.Error(w, "Could not delete post", http.StatusInternalServerError)
+			return
+		}
+
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	}
+}
+
+// DeleteAnyCommentPOST allows moderators and admins to delete any comment.
+func DeleteAnyCommentPOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+
+		commentID, err := strconv.ParseInt(r.FormValue("comment_id"), 10, 64)
+		if err != nil || commentID <= 0 {
+			http.Error(w, "Invalid comment ID", http.StatusBadRequest)
+			return
+		}
+
+		postID, err := strconv.ParseInt(r.FormValue("post_id"), 10, 64)
+		if err != nil || postID <= 0 {
+			http.Error(w, "Invalid post ID", http.StatusBadRequest)
+			return
+		}
+
+		if err := database.DeleteAnyComment(db, commentID); err != nil {
+			http.Error(w, "Could not delete comment", http.StatusInternalServerError)
+			return
+		}
+
+		http.Redirect(w, r, fmt.Sprintf("/post?id=%d", postID), http.StatusSeeOther)
+	}
+}
+
+// AdminPanelGET shows the admin panel with all users.
+func AdminPanelGET(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		users, err := database.GetAllUsers(db)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		userID, _ := utils.GetUserID(r)
+		utils.RenderTemplate(w, "web/templates/admin.html", models.Template{
+			Users:    users,
+			LoggedIn: true,
+			Role:     "admin",
+			Username: getUsernameByID(db, userID),
+		})
+	}
+}
+
+// SetRolePOST allows admins to change a user's role.
+func SetRolePOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+
+		targetUserID, err := strconv.ParseInt(r.FormValue("user_id"), 10, 64)
+		if err != nil || targetUserID <= 0 {
+			http.Error(w, "Invalid user ID", http.StatusBadRequest)
+			return
+		}
+
+		role := strings.TrimSpace(r.FormValue("role"))
+
+		// Prevent admin from demoting themselves accidentally.
+		currentUserID, _ := utils.GetUserID(r)
+		if targetUserID == currentUserID {
+			http.Error(w, "Cannot change your own role", http.StatusBadRequest)
+			return
+		}
+
+		if err := database.SetUserRole(db, targetUserID, role); err != nil {
+			http.Error(w, "Failed to update role", http.StatusBadRequest)
+			return
+		}
+
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+	}
+}
+
+
+============================================================
+
+FILE: .\internal\handlers\posts.go
+------------------------------------------------------------
+// internal/handlers/posts.go
+// Handles HTTP requests for viewing and creating posts.
+
+package handlers
+
+import (
+	"database/sql"
+	"fmt"
+	"forum/internal/database"
+	"forum/internal/middleware"
+	"forum/internal/models"
+	"forum/internal/utils"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+const index = "web/templates/index.html"
+const postpage = "web/templates/post.html"
+const cpost = "web/templates/create-post.html"
+
+// IndexGET serves the homepage showing all posts.
+// Available to all users - guests and logged-in users.
+
+// IndexGET now serves the homepage with optional filtering.
+// Filter logic:
+//
+//	/?category_id=N  â†’ posts in that category  (all users)
+//	/?filter=created â†’ posts by logged-in user  (auth required)
+//	/?filter=liked   â†’ posts liked by user      (auth required)
+//	/                â†’ all posts                (all users)
+func IndexGET(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// The default ServeMux routes everything that does not match
+		// another pattern to "/". We only want to handle exactly "/".
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Read the filter parameters from the URL
+		categoryIDStr := r.URL.Query().Get("category_id")
+		filter := r.URL.Query().Get("filter")
+
+		// Read login status â€” needed for auth-only filters.
+		userID, loggedIn := utils.GetUserID(r)
+
+		categories, err := database.GetAllCategories(db)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		var posts []models.Post
+		var categoryID int64
+
+		switch {
+		case categoryIDStr != "":
+			// Filter by category - available to all users.
+			categoryID, err := strconv.ParseInt(categoryIDStr, 10, 64)
+			if err != nil {
+				http.Error(w, "Invalid Category ID", http.StatusBadRequest)
+				return
+			}
+
+			posts, err = database.GetPostsByCategory(db, categoryID, userID)
+			if err != nil {
+				http.Error(w, "innternal Server Error", http.StatusInternalServerError)
+				return
+			}
+		case filter == "created":
+			// Filter by posts created by the logged-in user.
+			// Guests are redirected to login.
+			if !loggedIn {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+			posts, err = database.GetPostsByUser(db, userID)
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+		case filter == "liked":
+			// Filter by posts liked by the logged-in user.
+			// Guests are redirected to login.
+			if !loggedIn {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+			posts, err = database.GetPostsLikedByUser(db, userID)
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+		default:
+			// No filter so all posts are showed
+			posts, err = database.GetAllPosts(db, userID)
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+
+			}
+		}
+
+		var username string
+		if loggedIn {
+			username = getUsernameByID(db, userID)
+		}
+
+		utils.RenderTemplate(w, index, models.Template{
+			Posts:      posts,
+			Categories: categories,
+			LoggedIn:   loggedIn,
+			UserID:     userID,
+			Username:   username,
+			Filter:     filter,
+			CategoryID: categoryID,
+			Role:       utils.GetRole(r),
+		})
+
+	}
+}
+
+func getUsernameByID(db *sql.DB, userID int64) string {
+	var username string
+	err := db.QueryRow(
+		"SELECT username FROM users WHERE id = ?", userID,
+	).Scan(&username)
+
+	if err != nil {
+		return ""
+	}
+	return username
+}
+
+// PostGET serves the single post page with all its comments.
+// Available to all users.
+func PostGET(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract the post ID from the URL query parameter.
+		// URL format: /post?id=5
+		idStr := r.URL.Query().Get("id")
+		if idStr == "" {
+			http.Error(w, "Missing Post ID", http.StatusBadRequest)
+			return
+		}
+
+		// strconv.ParseInt converts string to integer "5" ==> 5
+		// Base 10, 64-bit integer.
+		postID, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid Post ID", http.StatusBadRequest)
+			return
+		}
+
+		userID, _ := utils.GetUserID(r)
+		// Fetch the post from database
+		post, comments, err := database.GetPostByID(db, postID, userID)
+		if err == sql.ErrNoRows {
+			// Post not found - return 404
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		userID, loggedIn := utils.GetUserID(r)
+		var username string
+		username = getUsernameByID(db, userID)
+
+		utils.RenderTemplate(w, postpage, models.Template{
+			Post:     post,
+			Comments: comments,
+			LoggedIn: loggedIn,
+			UserID:   userID,
+			Username: username,
+			Role:     utils.GetRole(r),
+		})
+	}
+}
+
+// CreatePostGET serves the create post form.
+// Requires authentication â€” middleware handles the redirect if not logged in.
+func CreatePostGET(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		categories, err := database.GetAllCategories(db)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		userID, _ := utils.GetUserID(r)
+
+		utils.RenderTemplate(w, cpost, models.Template{
+			Categories: categories,
+			LoggedIn:   true,
+			Username:   getUsernameByID(db, userID),
+			Role:       utils.GetRole(r),
+		})
+
+	}
+}
+
+// CreatePostPOST processes the new post form submission.
+// Requires authentication.
+func CreatePostPOST(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		userID, _ := utils.GetUserID(r)
+
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+			return
+		}
+
+		title := strings.TrimSpace(r.FormValue("title"))
+		content := strings.TrimSpace(r.FormValue("content"))
+
+		// Validate: title and content must not be empty
+		if title == "" || content == "" {
+			categories, _ := database.GetAllCategories(db)
+			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
+				Categories: categories,
+				LoggedIn:   true,
+				Username:   getUsernameByID(db, userID),
+				Error:      "Title and content are required",
+				Role:       utils.GetRole(r),
+			})
+
+			return
+		}
+
+		if len(title) > 200 {
+			// show error on form
+			categories, _ := database.GetAllCategories(db)
+			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
+				Categories: categories,
+				LoggedIn:   true,
+				Username:   getUsernameByID(db, userID),
+				Error:      "Title must be 200 characters or less",
+			})
+			return
+		}
+		if len(content) > 10000 {
+			categories, _ := database.GetAllCategories(db)
+			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
+				Categories: categories,
+				LoggedIn:   true,
+				Username:   getUsernameByID(db, userID),
+				Error:      "Content must be 10,000 characters or less",
+			})
+			return
+		}
+
+		// Read the selected category IDs from the form.
+		// The form will send multiple values for "category_ids"
+		// r.Form["category_ids"] returns []string of all selected values.
+		categoryStrs := r.Form["category_ids"]
+		if len(categoryStrs) == 0 {
+			categories, _ := database.GetAllCategories(db)
+			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
+				Categories: categories,
+				LoggedIn:   true,
+				Username:   getUsernameByID(db, userID),
+				Error:      "Select at least one category",
+				Role:       utils.GetRole(r),
+			})
+			return
+		}
+
+		// Convert []string to []int64
+		var categoryIDs []int64
+		for _, s := range categoryStrs {
+			id, err := strconv.ParseInt(s, 10, 64)
+			if err != nil {
+				http.Error(w, "Invalid category ID", http.StatusBadRequest)
+				return
+			}
+			categoryIDs = append(categoryIDs, id)
+		}
+
+		imagePath, err := utils.SaveUploadImage(r, "image")
+		if err != nil {
+			categories, _ := database.GetAllCategories(db)
+			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
+				Categories: categories,
+				LoggedIn:   true,
+				Username:   getUsernameByID(db, userID),
+				Error:      err.Error(),
+				Role:       utils.GetRole(r),
+			})
+			return
+		}
+
+		// Create the post in the database.
+		// For now we will not add image path
+		postID, err := database.CreatePost(db, userID, title, content, imagePath, categoryIDs)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Redirect to the new post's page.
+		http.Redirect(w, r, fmt.Sprintf("/post?id=%d", postID), http.StatusSeeOther)
+
+	}
+}
+
+var _ = middleware.UserIDKey
+
+
+============================================================
+
+FILE: .\internal\middleware\middleware.go
+------------------------------------------------------------
+package middleware
+
+import (
+	"context"
+	"database/sql"
+	"forum/internal/auth"
+	"net/http"
+)
+
+// Custom type for context keys in this package
+// It prevents collisions with context keys from other packages that might also use "userID"
+type ContextKey string
+
+const UserIDKey ContextKey = "userID"
+const RoleKey ContextKey = "role"
+
+func RequireAuth(next http.HandlerFunc, db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		// ValidateSession reads the cookie ans checks the database
+		// Returns the userID if valid, error if not.
+		userID, err := auth.ValidateSession(r, db)
+		if err != nil {
+			// Session is missing, invalid or expired
+			// Redirect to /login - do not call the next handler
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		var role string
+		db.QueryRow("SELECT role FROM users WHERE id = ?", userID).Scan(&role)
+
+		// Session is valid. Attach the userID to the request context
+		// so the handler could identify who is making the request
+		ctx := context.WithValue(r.Context(), UserIDKey, userID)
+		ctx = context.WithValue(ctx, RoleKey, role)
+		next.ServeHTTP(w, r.WithContext(ctx))
+
+	}
+}
+
+// OptionalAuth is middleware for routes visible to everyone,
+// but where we still want to know if the user is logged in or not.
+// Example: if user is logged in then we show him "Login/Logout" buttons.
+// Unlike RequireAuth, this never redirects - it just attaches the
+// userID if available and always calls the next handler.
+func OptionalAuth(next http.HandlerFunc, db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Try to validate
+		userID, err := auth.ValidateSession(r, db)
+		if err == nil {
+			// Session is valid - attach userID to context
+			var role string
+			db.QueryRow("SELECT role FROM users WHERE id = ?", userID).Scan(&role)
+
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			ctx = context.WithValue(ctx, RoleKey, role)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		// No valid session - call the handler anyway without a userID in context
+		next.ServeHTTP(w, r)
+	}
+}
+
+func RequireModerator(next http.HandlerFunc, db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := auth.ValidateSession(r, db)
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+
+		var role string
+		err = db.QueryRow(
+			"SELECT role FROM users WHERE id = ?", userID,
+		).Scan(&role)
+		if err != nil || (role != "moderator" && role != "admin") {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), UserIDKey, userID)
+		ctx = context.WithValue(ctx, ContextKey("role"), role)
+		next.ServeHTTP(w, r.WithContext(ctx))
+
+	}
+}
+
+func RequireAdmin(next http.HandlerFunc, db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		userID, err := auth.ValidateSession(r, db)
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+
+		var role string
+		err = db.QueryRow(
+			"SELECT role FROM users WHERE id = ?", userID,
+		).Scan(&role)
+
+		if err != nil || (role != "admin") {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), UserIDKey, userID)
+		ctx = context.WithValue(ctx, ContextKey("role"), role)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+
+	}
+}
+
+func SecurityHeaders(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Prevents browsers from MIME-sniffing the content type.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+
+		// Prevents the page from being embedded in an iframe on another site.
+		// Protects against clickjacking attacks.
+		w.Header().Set("X-Frame-Options", "DENY")
+
+		// Tells browsers to only send the Referer header to same-origin requests.
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
+		next.ServeHTTP(w, r)
+	}
+}
+
+
+============================================================
+
+FILE: .\internal\models\models.go
+------------------------------------------------------------
+// internal/models/models.go
+// Defines Go structs that map directly to database tables.
+// Every database row we read gets scanned into one of these structs.
+
+package models
+
+import "time"
+
+type User struct {
+	ID           int64
+	Email        string
+	Username     string
+	PasswordHash string
+	Avatar       string
+	Role         string
+	CreatedAt    time.Time
+}
+
+type Session struct {
+	ID        int64
+	UserID    int64
+	Token     string
+	ExpiresAt time.Time
+}
+
+type Post struct {
+	ID           int64
+	UserID       int64
+	Username     string
+	Title        string
+	Content      string
+	ImagePath    string
+	CreatedAt    time.Time
+	Categories   []string
+	LikeCount    int
+	DislikeCount int
+	UserVote     int
+}
+
+type Category struct {
+	ID   int64
+	Name string
+}
+
+type Comment struct {
+	ID           int64
+	PostID       int64
+	UserID       int64
+	Username     string
+	Content      string
+	CreatedAt    time.Time
+	LikeCount    int
+	DislikeCount int
+	UserVote     int
+}
+
+type Like struct {
+	ID        int64
+	UserID    int64
+	PostID    *int64 // pointer because this can be null in database
+	CommentID *int64 // same as PostID it can be null
+	IsLike    bool
+	CreatedAt time.Time
+}
+
+type Template struct {
+	Posts      []Post
+	Post       Post
+	Comments   []Comment
+	Categories []Category
+	UserID     int64
+	Username   string
+	LoggedIn   bool
+	Error      string
+	Filter     string
+	CategoryID int64
+	Users      []User
+	Role       string
+}
+
+
+============================================================
+
+FILE: .\internal\utils\utils.go
+------------------------------------------------------------
+package utils
+
+import (
+	"fmt"
+	"forum/internal/middleware"
+	"forum/internal/models"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"sync"
+	"text/template"
+	"time"
+
+	"github.com/gofrs/uuid"
+)
+
+// Utils - utility functions
+// Small reusable helper functions that donâ€™t belong to a specific feature.
+
+// GetUserID reads the authenticated user's ID from the request context.
+// Returns the userID and true if the user is logged in.
+// Returns 0 and false if the user is not logged in.
+// Handlers use this to check auth status and get the current user's ID
+func GetUserID(r *http.Request) (int64, bool) {
+	// r.Context().Value() returns interface {} - we must type assert it.
+	// The comma-ok pattern: if the key does not exist or the type is wrong,
+	// ok will be false instead of panicking.
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	return userID, ok
+}
+
+// RenderTemplate parses and executes an HTML template.
+// It always includes base.html as the layout wrapper.
+// pagePath is the path to the specific page template.
+// data is passed directly to the template engine.
+func RenderTemplate(w http.ResponseWriter, pagePath string, data interface{}) {
+	// We parse base.html + the specific page template together.
+	// The base defines the outer HTML structure.
+	// The page defines the "content" block that goes inside base.
+	tmpl, err := template.ParseFiles(
+		"web/templates/base.html",
+		pagePath,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Execute runs the template with the provided data and writes
+	// the result directly to the HTTP response writer.
+	// "base.html" refers to the {{define "base"}} block in base.html â€”
+	// we execute the base which then pulls in the content block.
+	err = tmpl.ExecuteTemplate(w, filepath.Base("web/templates/base.html"), data)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+}
+
+// Shifting left by 1 is like multiplying by 2.
+// So shifting left by 20 it means: 10 * 2^20
+// 10 << 20 = 10 * 1,048,576 = 10,485,760
+// Which is about 10MB
+const maxUploadSize = 10 << 20 // 10 MB
+
+var allowedMIMETypes = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+}
+
+// SaveUploadedImage reads an uploaded image from the request,
+// validates its type and size, saves it to the uploads directory,
+// and returns the public URL path to the saved file.
+// Returns an empty string and nil error if no file was uploaded.
+// Returns an error if the file is invalid or cannot be saved.
+func SaveUploadImage(r *http.Request, fieldName string) (string, error) {
+	// Retrieve the file from the multipart form.
+	// r.FormFile returns the file, its header info, and any error.
+	file, header, err := r.FormFile(fieldName)
+	if err == http.ErrMissingFile {
+		return "", nil
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to read uploaded file: %w", err)
+	}
+
+	defer file.Close()
+
+	if header.Size > maxUploadSize {
+		return "", fmt.Errorf("file is too large: max 10MB: %w", err)
+	}
+
+	buffer := make([]byte, 512)
+	_, err = file.Read(buffer)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file header: %w", err)
+	}
+
+	mimeType := http.DetectContentType(buffer)
+
+	ext, allowed := allowedMIMETypes[mimeType]
+	if !allowed {
+		return "", fmt.Errorf("invalid file type: %w", err)
+	}
+
+	_, err = file.Seek(0, io.SeekStart)
+	if err != nil {
+		return "", fmt.Errorf("failed to reset file reader: %w", err)
+	}
+
+	id, err := uuid.NewV4()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate filename: %w", err)
+	}
+
+	filename := id.String() + ext
+
+	uploadDir := "web/static/uploads"
+	fullPath := filepath.Join(uploadDir, filename)
+
+	dst, err := os.Create(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create file on disk: %w", err)
+	}
+
+	defer dst.Close()
+
+	_, err = io.Copy(dst, file)
+	if err != nil {
+		return "", fmt.Errorf("failed to save the file: %w", err)
+	}
+
+	return "/static/uploads/" + filename, nil
+}
+
+func GetRole(r *http.Request) string {
+	role, _ := r.Context().Value(middleware.ContextKey("role")).(string)
+	return role
+}
+
+type rateLimiter struct {
+	mu       sync.Mutex
+	attempts map[string][]time.Time
+}
+
+var LoginLimiter = &rateLimiter{
+	attempts: make(map[string][]time.Time),
+}
+
+func (rl *rateLimiter) Allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	window := 60 * time.Second
+	max := 5
+
+	var recent []time.Time
+	for _, t := range rl.attempts[ip] {
+		if now.Sub(t) < window {
+			recent = append(recent, t)
+		}
+	}
+
+	rl.attempts[ip] = recent
+
+	if len(recent) >= max {
+		return false
+	}
+
+	rl.attempts[ip] = append(rl.attempts[ip], now)
+
+	return true
+
+}
+
+// RenderError renders the error page with the given HTTP status code.
+func RenderError(w http.ResponseWriter, status int) {
+	w.WriteHeader(status)
+	code := strconv.Itoa(status)
+	RenderTemplate(w, "web/templates/error.html", models.Template{
+		Error: code,
+	})
+}
+
+
+============================================================
+
+FILE: .\migrations\schema.sql
+------------------------------------------------------------
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS users(
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    email           TEXT NOT NULL UNIQUE, 
+    username        TEXT NOT NULL UNIQUE,
+    password_hash   TEXT NOT NULL,
+    avatar          TEXT DEFAULT '',
+    role            TEXT NOT NULL DEFAULT 'user',
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sessions(
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL, 
+    token       TEXT NOT NULL UNIQUE, 
+    expires_at  DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS posts(
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL, 
+    title       TEXT NOT NULL,   
+    content     TEXT NOT NULL,
+    image_path  TEXT DEFAULT '',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS categories(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS post_categories(
+    post_id         INTEGER NOT NULL,
+    category_id     INTEGER NOT NULL,
+    PRIMARY KEY (post_id, category_id),
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS comments(
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id     INTEGER NOT NULL,
+    user_id     INTEGER NOT NULL,
+    content     TEXT NOT NULL,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS likes(
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    post_id         INTEGER, 
+    comment_id      INTEGER,
+    is_like         INTEGER NOT NULL,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE, 
+    FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+    UNIQUE (user_id, post_id),
+    UNIQUE (user_id, comment_id)
+);
+
+INSERT OR IGNORE INTO categories (name) VALUES 
+    ('General'),
+    ('Technology'),
+    ('Gaming'),
+    ('Science'),
+    ('Politics'),
+    ('Sports'),
+    ('Entertainment');
+
+============================================================
+
+FILE: .\web\static\css\style.css
+------------------------------------------------------------
+/* web/static/css/style.css */
+
+/* â”€â”€ Reset & Base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg:        #0f1117;
+    --surface:   #1a1d27;
+    --surface2:  #22263a;
+    --border:    #2e3250;
+    --accent:    #5865f2;
+    --accent-h:  #4752c4;
+    --green:     #3ba55d;
+    --red:       #ed4245;
+    --text:      #e0e2f0;
+    --text-muted:#8b8fa8;
+    --radius:    10px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    min-height: 100vh;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* â”€â”€ Navbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.navbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 58px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-brand {
+    color: var(--text);
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+}
+.nav-brand:hover { text-decoration: none; color: var(--accent); }
+
+.nav-links { display: flex; align-items: center; gap: 0.8rem; }
+.nav-username {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    padding-right: 0.4rem;
+}
+
+/* â”€â”€ Buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.btn {
+    padding: 0.42rem 1rem;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: background 0.15s, opacity 0.15s;
+    text-decoration: none;
+    display: inline-block;
+    line-height: 1.5;
+}
+.btn:hover { opacity: 0.88; text-decoration: none; }
+
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-h); opacity: 1; }
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+.btn-ghost:hover { background: var(--surface2); opacity: 1; }
+
+.btn-full { width: 100%; text-align: center; }
+
+/* â”€â”€ Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.container { max-width: 1080px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+.layout {
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 1.8rem;
+    align-items: start;
+}
+
+.post-card {
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.sidebar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    position: sticky;
+    top: 74px;
+}
+
+.filter-section { margin-bottom: 1.4rem; }
+.filter-section:last-child { margin-bottom: 0; }
+
+.filter-section h3 {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    padding-left: 0.5rem;
+}
+
+.filter-list { list-style: none; }
+.filter-list li { margin-bottom: 0.15rem; }
+
+.filter-link {
+    display: block;
+    padding: 0.38rem 0.7rem;
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    transition: background 0.15s, color 0.15s;
+    text-decoration: none;
+}
+.filter-link:hover {
+    background: var(--surface2);
+    color: var(--text);
+    text-decoration: none;
+}
+.filter-link.active {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 500;
+}
+
+/* â”€â”€ Page Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.2rem;
+}
+.page-header h2 { font-size: 1.2rem; color: var(--text); }
+
+/* â”€â”€ Post Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.post-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.3rem 1.5rem;
+    margin-bottom: 0.9rem;
+    transition: border-color 0.2s;
+}
+.post-card:hover { border-color: var(--accent); }
+
+.post-header { margin-bottom: 0.5rem; }
+.post-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text);
+}
+.post-title:hover { color: var(--accent); text-decoration: none; }
+
+.post-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-bottom: 0.7rem;
+    flex-wrap: wrap;
+}
+.post-author { font-size: 0.82rem; color: var(--text-muted); }
+
+.post-categories { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.category-tag {
+    background: rgba(88,101,242,0.15);
+    color: #8b9cf4;
+    font-size: 0.72rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: 20px;
+    border: 1px solid rgba(88,101,242,0.25);
+}
+
+.post-preview {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    line-height: 1.6;
+}
+
+.post-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.read-more {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+.read-more:hover { color: var(--accent); text-decoration: none; }
+
+/* â”€â”€ Vote Buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.vote-row { display: flex; gap: 0.4rem; align-items: center; }
+
+.vote-btn {
+    padding: 0.3rem 0.85rem;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+.vote-btn:hover { border-color: var(--accent); color: var(--text); }
+
+/* Active vote states â€” highlighted when user has voted */
+.vote-liked {
+    background: rgba(59,165,93,0.15) !important;
+    border-color: var(--green) !important;
+    color: var(--green) !important;
+}
+.vote-disliked {
+    background: rgba(237,66,69,0.15) !important;
+    border-color: var(--red) !important;
+    color: var(--red) !important;
+}
+
+.vote-btn-sm { padding: 0.2rem 0.65rem; font-size: 0.78rem; }
+.vote-count { font-size: 0.82rem; color: var(--text-muted); }
+
+/* â”€â”€ Single Post â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.post-full { max-width: 780px; margin: 0 auto; }
+
+.back-link { margin-bottom: 1rem; }
+.back-link a { color: var(--text-muted); font-size: 0.875rem; }
+.back-link a:hover { color: var(--text); }
+
+.post-detail {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+    margin-bottom: 1.8rem;
+}
+.post-detail h1 {
+    font-size: 1.7rem;
+    line-height: 1.3;
+    margin-bottom: 0.8rem;
+}
+.post-body {
+    color: var(--text-muted);
+    line-height: 1.8;
+    white-space: pre-wrap;
+    margin-top: 1.2rem;
+}
+
+/* â”€â”€ Comments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.comments-section h2 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.comment-count {
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 20px;
+    font-weight: 400;
+}
+
+.comment-form {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem;
+    margin-bottom: 1.2rem;
+}
+.comment-form textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.65rem 0.8rem;
+    color: var(--text);
+    font-size: 0.9rem;
+    font-family: inherit;
+    resize: vertical;
+    margin-bottom: 0.7rem;
+    transition: border-color 0.15s;
+}
+.comment-form textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.comment-form-footer { display: flex; justify-content: flex-end; }
+
+.comment-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.2rem;
+    margin-bottom: 0.7rem;
+}
+.comment-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.4rem;
+}
+.comment-author { font-size: 0.875rem; color: var(--text); }
+.comment-content {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 0.6rem;
+    line-height: 1.6;
+}
+
+/* Delete button */
+.btn-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    color: var(--text-muted);
+    transition: color 0.15s, background 0.15s;
+    margin-left: auto;
+}
+.btn-delete:hover { color: var(--red); background: rgba(237,66,69,0.1); }
+
+/* â”€â”€ Auth Pages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.auth-page {
+    display: flex;
+    justify-content: center;
+    padding-top: 4rem;
+}
+.auth-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 400px;
+}
+.auth-card h2 { font-size: 1.4rem; margin-bottom: 1.5rem; }
+.auth-switch {
+    margin-top: 1.2rem;
+    text-align: center;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+/* â”€â”€ Forms â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.form-group { margin-bottom: 1rem; }
+.form-group label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.8rem;
+    color: var(--text);
+    font-size: 0.9rem;
+    font-family: inherit;
+    transition: border-color 0.15s;
+}
+.form-group input:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.form-group input::placeholder,
+.form-group textarea::placeholder { color: #4a4f6a; }
+
+.form-page { max-width: 680px; }
+.form-page h2 { font-size: 1.4rem; margin-bottom: 1.5rem; }
+
+.category-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.35rem 0.75rem;
+    transition: border-color 0.15s;
+    color: var(--text-muted);
+}
+.checkbox-label:hover { border-color: var(--accent); color: var(--text); }
+.checkbox-label input { accent-color: var(--accent); }
+
+/* â”€â”€ Misc â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.empty-state {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 3rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.login-prompt {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    padding: 0.8rem 1rem;
+    background: var(--surface2);
+    border-radius: 6px;
+    margin-bottom: 1.2rem;
+}
+
+.error-banner {
+    background: rgba(237,66,69,0.12);
+    color: #f87171;
+    border: 1px solid rgba(237,66,69,0.3);
+    border-radius: 6px;
+    padding: 0.7rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+}
+
+/* â”€â”€ Image Upload â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.file-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.file-input {
+    /* Hide the default ugly file input */
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    position: absolute;
+    z-index: -1;
+}
+
+.file-label {
+    display: inline-block;
+    padding: 0.42rem 1rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+.file-label:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.file-name {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+}
+
+/* Post image display */
+.post-image {
+    width: 100%;
+    max-width: 100%;
+    margin: 1.2rem 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+}
+
+
+.post-image img {
+    width: 100%;
+    max-width: 100%;
+    max-height: 400px;
+    object-fit: contain;
+    display: block;
+    background: var(--surface2);
+}
+/* .post-image img {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    max-height: 420px;
+    height: auto;
+    object-fit: contain;
+} */
+/* Thumbnail on post cards */
+/* .post-card-image {
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    border-radius: 6px;
+    margin-bottom: 0.8rem;
+    display: block;
+} */
+
+.post-card-image {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    background: var(--surface2);
+    border-radius: 6px;
+    margin-bottom: 0.8rem;
+}
+
+.main-content {
+    min-width: 0;
+}
+
+/* â”€â”€ Admin Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.admin-table-wrapper {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.admin-table th {
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.admin-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+}
+
+.admin-table tr:last-child td { border-bottom: none; }
+.admin-table tr:hover td { background: var(--surface2); }
+
+.role-badge {
+    display: inline-block;
+    padding: 0.18rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.role-user      { background: var(--surface2); color: var(--text-muted); }
+.role-moderator { background: rgba(88,101,242,0.2); color: #8b9cf4; }
+.role-admin     { background: rgba(237,66,69,0.15); color: #f87171; }
+
+.role-select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 0.28rem 0.6rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+============================================================
+
+FILE: .\web\templates\admin.html
+------------------------------------------------------------
+{{define "content"}}
+<div class="form-page">
+    <h2>âš™ï¸ Admin Panel</h2>
+    <p style="color:var(--text-muted); margin-bottom:1.5rem">
+        Manage user roles. You cannot change your own role.
+    </p>
+
+    <div class="admin-table-wrapper">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Users}}
+                <tr>
+                    <td>{{.ID}}</td>
+                    <td>{{.Username}}</td>
+                    <td>{{.Email}}</td>
+                    <td>
+                        <span class="role-badge role-{{.Role}}">{{.Role}}</span>
+                    </td>
+                    <td>
+                        {{if ne .ID $.UserID}}
+                        <form action="/admin/set-role" method="POST"
+                              style="display:flex; gap:0.5rem; align-items:center">
+                            <input type="hidden" name="user_id" value="{{.ID}}">
+                            <select name="role" class="role-select">
+                                <option value="user"
+                                    {{if eq .Role "user"}}selected{{end}}>user</option>
+                                <option value="moderator"
+                                    {{if eq .Role "moderator"}}selected{{end}}>moderator</option>
+                                <option value="admin"
+                                    {{if eq .Role "admin"}}selected{{end}}>admin</option>
+                            </select>
+                            <button type="submit" class="btn btn-primary"
+                                    style="padding:0.3rem 0.7rem; font-size:0.8rem">
+                                Save
+                            </button>
+                        </form>
+                        {{else}}
+                        <span style="color:var(--text-muted); font-size:0.82rem">
+                            (you)
+                        </span>
+                        {{end}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}
+
+============================================================
+
+FILE: .\web\templates\base.html
+------------------------------------------------------------
+{{define "base.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forum</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="/" class="nav-brand">ðŸ’¬ Forum</a>
+    <div class="nav-links">
+    {{if .LoggedIn}}
+        <span class="nav-username">ðŸ‘¤ {{.Username}}</span>
+
+        {{if eq .Role "admin"}}
+        <a href="/admin" class="btn btn-ghost" style="font-size:0.82rem">âš™ï¸ Admin</a>
+        {{end}}
+
+        <a href="/post/create" class="btn btn-primary">+ New Post</a>
+
+        <form action="/logout" method="POST" style="display:inline">
+            <button type="submit" class="btn btn-ghost">Logout</button>
+        </form>
+    {{else}}
+        <a href="/login" class="btn btn-ghost">Login</a>
+        <a href="/register" class="btn btn-primary">Register</a>
+    {{end}}
+</div>
+</nav>
+
+<div class="container">
+    {{block "content" .}}{{end}}
+</div>
+
+</body>
+</html>
+{{end}}
+
+============================================================
+
+FILE: .\web\templates\create-post.html
+------------------------------------------------------------
+ {{define "content"}}
+
+ <div class="form-page">
+    <h2>Create New Post</h2>
+
+    {{if .Error}}
+    <div class="error-banner">{{.Error}}</div>
+    {{end}}
+
+    <form action="/post/create" method="POST" class="post-form" enctype="multipart/form-data">
+
+
+        <div class="form-group">
+            <label for="title">Title</label>
+            <input type="text" id="title" name="title" placeholder="Post Title" required>
+        </div>
+
+        <div class="form-group">
+            <label for="content">Content</label>
+            <textarea id="content" name="content" placeholder="Write your post..." rows="8" required></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label>Categories (select at least one)</label>
+            <div class="category-checkboxes">
+                {{range .Categories}}
+                <label class="checkbox-label">
+                    <input type="checkbox"
+                    name="category_ids"
+                    value="{{.ID}}">
+                    {{.Name}}
+                </label>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="image">Image (optional - JPEG, PNG, GIF, WebP - max 10MB)</label>
+            <div class="file-input-wrapper">
+                <input type="file" id="image" name="image" accept="image/jpeg,image/png,image/gif,image/webp" class="file-input">
+                <label for="image" class="file-label">ðŸ“Ž Choose image</label>
+                <span class="file-name" id="file-name">No file chosen</span>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Publish Post</button>
+    </form>
+
+ </div>
+
+ <script>
+    document.getElementById('image').addEventListener('change', function() {
+        const name = this.files[0] ? this.files[0].name : 'No file chosen';
+        document.getElementById('file-name').textContent = name
+    });
+ </script>
+
+ {{end}}
+
+============================================================
+
+FILE: .\web\templates\error.html
+------------------------------------------------------------
+{{define "content"}}
+<div class="auth-page">
+    <div class="auth-card" style="text-align:center">
+        <div style="font-size:3rem; margin-bottom:1rem">
+            {{if eq .Error "404"}}ðŸ”{{else}}âš ï¸{{end}}
+        </div>
+        <h2 style="margin-bottom:0.5rem">
+            {{if eq .Error "404"}}Page Not Found{{else}}Something Went Wrong{{end}}
+        </h2>
+        <p style="color:var(--text-muted); margin-bottom:1.5rem">
+            {{if eq .Error "404"}}
+                The page you're looking for doesn't exist.
+            {{else}}
+                An error occurred. Please try again.
+            {{end}}
+        </p>
+        <a href="/" class="btn btn-primary">Go Home</a>
+    </div>
+</div>
+{{end}}
+
+============================================================
+
+FILE: .\web\templates\index.html
+------------------------------------------------------------
+{{define "content"}}
+<div class="layout">
+
+    <aside class="sidebar">
+        <div class="filter-section">
+            <h3>Categories</h3>
+            <ul class="filter-list">
+                <li>
+                    <a href="/"
+                       class="filter-link {{if and (not .CategoryID) (not .Filter)}}active{{end}}">
+                        ðŸŒ All Posts
+                    </a>
+                </li>
+                {{range .Categories}}
+                <li>
+                    <a href="/?category_id={{.ID}}"
+                       class="filter-link {{if eq $.CategoryID .ID}}active{{end}}">
+                        # {{.Name}}
+                    </a>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+
+        {{if .LoggedIn}}
+        <div class="filter-section">
+            <h3>My Feed</h3>
+            <ul class="filter-list">
+                <li>
+                    <a href="/?filter=created"
+                       class="filter-link {{if eq .Filter "created"}}active{{end}}">
+                        âœï¸ My Posts
+                    </a>
+                </li>
+                <li>
+                    <a href="/?filter=liked"
+                       class="filter-link {{if eq .Filter "liked"}}active{{end}}">
+                        â¤ï¸ Liked Posts
+                    </a>
+                </li>
+            </ul>
+        </div>
+        {{end}}
+    </aside>
+
+    <main class="main-content">
+
+        <div class="page-header">
+            <h2>
+                {{if .Filter}}
+                    {{if eq .Filter "created"}}My Posts{{end}}
+                    {{if eq .Filter "liked"}}Liked Posts{{end}}
+                {{else if .CategoryID}}
+                    {{range .Categories}}
+                        {{if eq $.CategoryID .ID}}# {{.Name}}{{end}}
+                    {{end}}
+                {{else}}
+                    Latest Posts
+                {{end}}
+            </h2>
+            {{if .LoggedIn}}
+            <a href="/post/create" class="btn btn-primary">+ New Post</a>
+            {{end}}
+        </div>
+
+        {{if not .Posts}}
+        <div class="empty-state">
+            <p>No posts found.</p>
+            {{if .LoggedIn}}
+            <a href="/post/create" class="btn btn-primary" style="margin-top:1rem">
+                Be the first to post
+            </a>
+            {{end}}
+        </div>
+        {{end}}
+
+        {{range .Posts}}
+        <article class="post-card">
+            <div class="post-header">
+                <a href="/post?id={{.ID}}" class="post-title">{{.Title}}</a>
+            </div>
+
+            {{if .ImagePath}}
+            <img src="{{.ImagePath}}" alt="Post image" class="post-card-image">
+            {{end}}
+
+            <div class="post-meta-row">
+                <span class="post-author">ðŸ‘¤ {{.Username}}</span>
+                <div class="post-categories">
+                    {{range .Categories}}
+                    <span class="category-tag">{{.}}</span>
+                    {{end}}
+                </div>
+            </div>
+
+            <p class="post-preview">
+                {{if gt (len .Content) 180}}
+                    {{slice .Content 0 180}}...
+                {{else}}
+                    {{.Content}}
+                {{end}}
+            </p>
+
+            <div class="post-footer">
+                <div class="vote-row">
+                    {{if $.LoggedIn}}
+                    <form action="/like" method="POST" style="display:inline">
+                        <input type="hidden" name="target_type" value="post">
+                        <input type="hidden" name="target_id"   value="{{.ID}}">
+                        <input type="hidden" name="is_like"     value="1">
+                        <input type="hidden" name="redirect"    value="/">
+                        <button type="submit"
+                            class="vote-btn {{if eq .UserVote 1}}vote-liked{{end}}">
+                            ðŸ‘ {{.LikeCount}}
+                        </button>
+                    </form>
+                    <form action="/like" method="POST" style="display:inline">
+                        <input type="hidden" name="target_type" value="post">
+                        <input type="hidden" name="target_id"   value="{{.ID}}">
+                        <input type="hidden" name="is_like"     value="0">
+                        <input type="hidden" name="redirect"    value="/">
+                        <button type="submit"
+                            class="vote-btn {{if eq .UserVote -1}}vote-disliked{{end}}">
+                            ðŸ‘Ž {{.DislikeCount}}
+                        </button>
+                    </form>
+                    {{else}}
+                    <span class="vote-count">ðŸ‘ {{.LikeCount}}</span>
+                    <span class="vote-count">ðŸ‘Ž {{.DislikeCount}}</span>
+                    {{end}}
+                </div>
+                <a href="/post?id={{.ID}}" class="read-more">Read more â†’</a>
+            </div>
+        </article>
+        {{end}}
+
+    </main>
+</div>
+{{end}}
+
+============================================================
+
+FILE: .\web\templates\login.html
+------------------------------------------------------------
+ {{define "content"}}
+
+ <div class="auth-page">
+    <div class="auth-card">
+        <h2>Login</h2>
+
+        {{if .Error}}
+        <div class="error-banner">{{.Error}}</div>
+        {{end}}
+
+        <form action="/login" method="POST" class="auth-form">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" placeholder="your@gmail.com" required>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="*****" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-full">
+                Login
+            </button>
+        </form>
+
+        <p class="auth-switch">Don't have an account? <a href="/register">Register</a></p>
+
+    </div>
+ </div>
+ {{end}}
+
+============================================================
+
+FILE: .\web\templates\post.html
+------------------------------------------------------------
+{{define "content"}}
+<div class="post-full">
+
+    <div class="back-link">
+        <a href="/">← Back to posts</a>
+    </div>
+
+    <article class="post-detail">
+        <h1>{{.Post.Title}}</h1>
+        {{if .Post.ImagePath}}
+                <div class="post-image" >
+                    <img src="{{.Post.ImagePath}}" alt="Post image">
+                </div>
+        {{end}}
+        <div class="post-meta-row">
+    
+            <span class="post-author">👤 {{.Post.Username}}</span>
+            <div class="post-categories">
+                {{range .Post.Categories}}
+                <span class="category-tag">{{.}}</span>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="post-body">{{.Post.Content}}</div>
+
+        <div class="vote-row" style="margin-top:1.2rem">
+            {{if .LoggedIn}}
+            <form action="/like" method="POST" style="display:inline">
+                <input type="hidden" name="target_type" value="post">
+                <input type="hidden" name="target_id"   value="{{.Post.ID}}">
+                <input type="hidden" name="is_like"     value="1">
+                <input type="hidden" name="redirect"    value="/post?id={{.Post.ID}}">
+                <button type="submit"
+                    class="vote-btn {{if eq .Post.UserVote 1}}vote-liked{{end}}">
+                    👍 {{.Post.LikeCount}}
+                </button>
+            </form>
+            <form action="/like" method="POST" style="display:inline">
+                <input type="hidden" name="target_type" value="post">
+                <input type="hidden" name="target_id"   value="{{.Post.ID}}">
+                <input type="hidden" name="is_like"     value="0">
+                <input type="hidden" name="redirect"    value="/post?id={{.Post.ID}}">
+                <button type="submit"
+                    class="vote-btn {{if eq .Post.UserVote -1}}vote-disliked{{end}}">
+                    👎 {{.Post.DislikeCount}}
+                </button>
+            </form>
+            {{else}}
+            <span class="vote-count">👍 {{.Post.LikeCount}}</span>
+            <span class="vote-count">👎 {{.Post.DislikeCount}}</span>
+            {{end}}
+            {{if or (eq $.Role "moderator") (eq $.Role "admin")}}
+                <form action="/mod/delete-post" method="POST" style="margin-top:1rem">
+                    <input type="hidden" name="post_id" value="{{.Post.ID}}">
+                    <button type="submit" class="btn-delete"
+                            onclick="return confirm('Delete this post? This cannot be undone.')">
+                        🗑 Delete Post (mod)
+                    </button>
+                </form>
+                {{end}}
+        </div>
+    </article>
+
+    <section class="comments-section">
+        <h2>Comments <span class="comment-count">{{len .Comments}}</span></h2>
+
+        {{if .LoggedIn}}
+        <form action="/comment/create" method="POST" class="comment-form">
+            <input type="hidden" name="post_id" value="{{.Post.ID}}">
+            <textarea name="content"
+                      placeholder="Share your thoughts..."
+                      rows="3" required></textarea>
+            <div class="comment-form-footer">
+                <button type="submit" class="btn btn-primary">Post Comment</button>
+            </div>
+        </form>
+        {{else}}
+        <div class="login-prompt">
+            <a href="/login">Login</a> to join the conversation.
+        </div>
+        {{end}}
+
+        {{if not .Comments}}
+        <div class="empty-state">No comments yet.</div>
+        {{end}}
+
+        {{range .Comments}}
+        <div class="comment-card">
+            <div class="comment-header">
+                <strong class="comment-author">{{.Username}}</strong>
+            </div>
+            <p class="comment-content">{{.Content}}</p>
+            <div class="vote-row">
+                {{if $.LoggedIn}}
+                <form action="/like" method="POST" style="display:inline">
+                    <input type="hidden" name="target_type" value="comment">
+                    <input type="hidden" name="target_id"   value="{{.ID}}">
+                    <input type="hidden" name="is_like"     value="1">
+                    <input type="hidden" name="redirect"
+                           value="/post?id={{$.Post.ID}}">
+                    <button type="submit"
+                        class="vote-btn vote-btn-sm {{if eq .UserVote 1}}vote-liked{{end}}">
+                        👍 {{.LikeCount}}
+                    </button>
+                </form>
+                <form action="/like" method="POST" style="display:inline">
+                    <input type="hidden" name="target_type" value="comment">
+                    <input type="hidden" name="target_id"   value="{{.ID}}">
+                    <input type="hidden" name="is_like"     value="0">
+                    <input type="hidden" name="redirect"
+                           value="/post?id={{$.Post.ID}}">
+                    <button type="submit"
+                        class="vote-btn vote-btn-sm {{if eq .UserVote -1}}vote-disliked{{end}}">
+                        👎 {{.DislikeCount}}
+                    </button>
+                </form>
+                {{else}}
+                <span class="vote-count">👍 {{.LikeCount}}</span>
+                <span class="vote-count">👎 {{.DislikeCount}}</span>
+                {{end}}
+
+
+                {{if or (and $.LoggedIn (eq $.UserID .UserID)) (eq $.Role "moderator") (eq $.Role "admin")}}
+                <form action="{{if or (eq $.Role "moderator") (eq $.Role "admin")}}/mod/delete-comment{{else}}/comment/delete{{end}}"
+                    method="POST" style="display:inline; margin-left:auto">
+                    <input type="hidden" name="comment_id" value="{{.ID}}">
+                    <input type="hidden" name="post_id"    value="{{$.Post.ID}}">
+                    <button type="submit" class="btn-delete"
+                            onclick="return confirm('Delete this comment?')">
+                        🗑
+                    </button>
+                </form>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+    </section>
+
+</div>
+{{end}}
+
+============================================================
+
+FILE: .\web\templates\register.html
+------------------------------------------------------------
+{{define "content"}}
+
+<div class="auth-page">
+    <div class="auth-card">
+        <h2>Create Account</h2>
+
+        {{if .Error}}
+        <div class="error-banner">{{.Error}}</div>
+        {{end}}
+
+        <form action="/register" method="POST" class="auth-form">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" placeholder="your@gmail.com" required>
+            </div>
+
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="Choose your username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="*****" required>
+            </div>
+
+            <button class="btn btn-primary" type="submit">Create Account</button>
+            
+        </form>
+
+        <p class="auth-switch">Already have an account? <a href="/login">Login</a></p>
+
+    </div>
+</div>
+
+{{end}}
+
+
+============================================================
+
+

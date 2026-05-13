@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"forum/internal/auth"
+	"forum/internal/render"
 	"net/http"
 )
 
@@ -27,7 +28,11 @@ func RequireAuth(next http.HandlerFunc, db *sql.DB) http.HandlerFunc {
 			return
 		}
 		var role string
-		db.QueryRow("SELECT role FROM users WHERE id = ?", userID).Scan(&role)
+		err = db.QueryRow("SELECT role FROM users WHERE id = ?", userID).Scan(&role)
+		if err != nil {
+			render.Error(w, http.StatusInternalServerError)
+			return
+		}
 
 		// Session is valid. Attach the userID to the request context
 		// so the handler could identify who is making the request
@@ -50,7 +55,11 @@ func OptionalAuth(next http.HandlerFunc, db *sql.DB) http.HandlerFunc {
 		if err == nil {
 			// Session is valid - attach userID to context
 			var role string
-			db.QueryRow("SELECT role FROM users WHERE id = ?", userID).Scan(&role)
+			err = db.QueryRow("SELECT role FROM users WHERE id = ?", userID).Scan(&role)
+			if err != nil {
+				next.ServeHTTP(w, r)
+				return
+			}
 
 			ctx := context.WithValue(r.Context(), UserIDKey, userID)
 			ctx = context.WithValue(ctx, RoleKey, role)
@@ -76,7 +85,7 @@ func RequireModerator(next http.HandlerFunc, db *sql.DB) http.HandlerFunc {
 			"SELECT role FROM users WHERE id = ?", userID,
 		).Scan(&role)
 		if err != nil || (role != "moderator" && role != "admin") {
-			http.Error(w, "Forbidden", http.StatusForbidden)
+			render.Error(w, http.StatusForbidden)
 			return
 		}
 
@@ -102,7 +111,7 @@ func RequireAdmin(next http.HandlerFunc, db *sql.DB) http.HandlerFunc {
 		).Scan(&role)
 
 		if err != nil || (role != "admin") {
-			http.Error(w, "Forbidden", http.StatusForbidden)
+			render.Error(w, http.StatusForbidden)
 			return
 		}
 
@@ -112,4 +121,20 @@ func RequireAdmin(next http.HandlerFunc, db *sql.DB) http.HandlerFunc {
 		next.ServeHTTP(w, r.WithContext(ctx))
 
 	}
+}
+
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Prevents browsers from MIME-sniffing the content type.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+
+		// Prevents the page from being embedded in an iframe on another site.
+		// Protects against clickjacking attacks.
+		w.Header().Set("X-Frame-Options", "DENY")
+
+		// Tells browsers to only send the Referer header to same-origin requests.
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
+		next.ServeHTTP(w, r)
+	})
 }

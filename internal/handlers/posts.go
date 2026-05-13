@@ -34,7 +34,7 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 		// The default ServeMux routes everything that does not match
 		// another pattern to "/". We only want to handle exactly "/".
 		if r.URL.Path != "/" {
-			http.NotFound(w, r)
+			utils.RenderError(w, http.StatusNotFound)
 			return
 		}
 
@@ -47,7 +47,8 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 
 		categories, err := database.GetAllCategories(db)
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
+
 			return
 		}
 
@@ -59,13 +60,13 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 			// Filter by category - available to all users.
 			categoryID, err := strconv.ParseInt(categoryIDStr, 10, 64)
 			if err != nil {
-				http.Error(w, "Invalid Category ID", http.StatusBadRequest)
+				utils.RenderError(w, http.StatusBadRequest)
 				return
 			}
 
 			posts, err = database.GetPostsByCategory(db, categoryID, userID)
 			if err != nil {
-				http.Error(w, "innternal Server Error", http.StatusInternalServerError)
+				utils.RenderError(w, http.StatusInternalServerError)
 				return
 			}
 		case filter == "created":
@@ -77,7 +78,7 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 			}
 			posts, err = database.GetPostsByUser(db, userID)
 			if err != nil {
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				utils.RenderError(w, http.StatusInternalServerError)
 				return
 			}
 		case filter == "liked":
@@ -89,14 +90,14 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 			}
 			posts, err = database.GetPostsLikedByUser(db, userID)
 			if err != nil {
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				utils.RenderError(w, http.StatusInternalServerError)
 				return
 			}
 		default:
 			// No filter so all posts are showed
 			posts, err = database.GetAllPosts(db, userID)
 			if err != nil {
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				utils.RenderError(w, http.StatusInternalServerError)
 				return
 
 			}
@@ -141,7 +142,7 @@ func PostGET(db *sql.DB) http.HandlerFunc {
 		// URL format: /post?id=5
 		idStr := r.URL.Query().Get("id")
 		if idStr == "" {
-			http.Error(w, "Missing Post ID", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
@@ -149,7 +150,7 @@ func PostGET(db *sql.DB) http.HandlerFunc {
 		// Base 10, 64-bit integer.
 		postID, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
-			http.Error(w, "Invalid Post ID", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
@@ -158,11 +159,11 @@ func PostGET(db *sql.DB) http.HandlerFunc {
 		post, comments, err := database.GetPostByID(db, postID, userID)
 		if err == sql.ErrNoRows {
 			// Post not found - return 404
-			http.NotFound(w, r)
+			utils.RenderError(w, http.StatusNotFound)
 			return
 		}
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
@@ -187,7 +188,7 @@ func CreatePostGET(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		categories, err := database.GetAllCategories(db)
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
@@ -211,7 +212,7 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 		userID, _ := utils.GetUserID(r)
 
 		if err := r.ParseMultipartForm(10 << 20); err != nil {
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
@@ -229,6 +230,28 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 				Role:       utils.GetRole(r),
 			})
 
+			return
+		}
+
+		if len(title) > 200 {
+			// show error on form
+			categories, _ := database.GetAllCategories(db)
+			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
+				Categories: categories,
+				LoggedIn:   true,
+				Username:   getUsernameByID(db, userID),
+				Error:      "Title must be 200 characters or less",
+			})
+			return
+		}
+		if len(content) > 10000 {
+			categories, _ := database.GetAllCategories(db)
+			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
+				Categories: categories,
+				LoggedIn:   true,
+				Username:   getUsernameByID(db, userID),
+				Error:      "Content must be 10,000 characters or less",
+			})
 			return
 		}
 
@@ -253,7 +276,7 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 		for _, s := range categoryStrs {
 			id, err := strconv.ParseInt(s, 10, 64)
 			if err != nil {
-				http.Error(w, "Invalid category ID", http.StatusBadRequest)
+				utils.RenderError(w, http.StatusBadRequest)
 				return
 			}
 			categoryIDs = append(categoryIDs, id)
@@ -276,7 +299,7 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 		// For now we will not add image path
 		postID, err := database.CreatePost(db, userID, title, content, imagePath, categoryIDs)
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 

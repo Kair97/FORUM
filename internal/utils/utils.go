@@ -3,11 +3,14 @@ package utils
 import (
 	"fmt"
 	"forum/internal/middleware"
+	"forum/internal/render"
+	"html/template"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"text/template"
+	"sync"
+	"time"
 
 	"github.com/gofrs/uuid"
 )
@@ -138,4 +141,45 @@ func SaveUploadImage(r *http.Request, fieldName string) (string, error) {
 func GetRole(r *http.Request) string {
 	role, _ := r.Context().Value(middleware.ContextKey("role")).(string)
 	return role
+}
+
+type rateLimiter struct {
+	mu       sync.Mutex
+	attempts map[string][]time.Time
+}
+
+var LoginLimiter = &rateLimiter{
+	attempts: make(map[string][]time.Time),
+}
+
+func (rl *rateLimiter) Allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	window := 60 * time.Second
+	max := 5
+
+	var recent []time.Time
+	for _, t := range rl.attempts[ip] {
+		if now.Sub(t) < window {
+			recent = append(recent, t)
+		}
+	}
+
+	rl.attempts[ip] = recent
+
+	if len(recent) >= max {
+		return false
+	}
+
+	rl.attempts[ip] = append(rl.attempts[ip], now)
+
+	return true
+
+}
+
+// RenderError renders the error page with the given HTTP status code.
+func RenderError(w http.ResponseWriter, status int) {
+	render.Error(w, status)
 }

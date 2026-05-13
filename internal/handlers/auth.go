@@ -24,7 +24,7 @@ func RegisterPOST(db *sql.DB) http.HandlerFunc {
 		// And must be called before r.FormValu() will work
 		// returns error if the body is malformed
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
@@ -38,6 +38,31 @@ func RegisterPOST(db *sql.DB) http.HandlerFunc {
 				Error: "All fields are required",
 			})
 
+			return
+		}
+
+		// Length limits — prevent database abuse and UI breakage.
+		if len(email) > 254 {
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, register, models.Template{
+				Error: "Email must be 254 characters or less",
+			})
+			return
+		}
+		if len(username) > 30 {
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, register, models.Template{
+				Error: "Username must be 30 characters or less",
+			})
+			return
+		}
+		if len(password) > 72 {
+			// bcrypt silently truncates passwords over 72 bytes.
+			// We reject them explicitly so the user knows the limit.
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, register, models.Template{
+				Error: "Password must be 72 characters or less",
+			})
 			return
 		}
 
@@ -57,17 +82,39 @@ func RegisterPOST(db *sql.DB) http.HandlerFunc {
 		).Scan(&existingID)
 
 		if err == nil {
-			http.Error(w, "Email already registered", http.StatusBadRequest)
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, register, models.Template{
+				Error: "Email already registered",
+			})
 			return
 		}
 		if err != sql.ErrNoRows {
-			http.Error(w, "Interval Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
+			return
+		}
+
+		// Check whether username is already used.
+		// The database also has UNIQUE(username), but checking here lets us
+		// show a clear registration error instead of a generic server error.
+		err = db.QueryRow(
+			"SELECT id FROM users WHERE username = ?", username,
+		).Scan(&existingID)
+
+		if err == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			utils.RenderTemplate(w, register, models.Template{
+				Error: "Username already taken",
+			})
+			return
+		}
+		if err != sql.ErrNoRows {
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
 		passwordHash, err := auth.HashPassword(password)
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
@@ -76,18 +123,18 @@ func RegisterPOST(db *sql.DB) http.HandlerFunc {
 			"INSERT INTO users (email, username, password_hash, role) VALUES (?, ?, ?, ?)", email, username, passwordHash, "user",
 		)
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
 		userID, err := result.LastInsertId()
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
 		if err := auth.CreateSession(w, db, userID); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
@@ -105,7 +152,19 @@ func LoginGET(db *sql.DB) http.HandlerFunc {
 func LoginPOST(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
+			return
+		}
+
+		ip := r.RemoteAddr
+		if i := strings.LastIndex(ip, ":"); i != -1 {
+			ip = ip[:i]
+		}
+
+		if !utils.LoginLimiter.Allow(ip) {
+			utils.RenderTemplate(w, login, models.Template{
+				Error: "Too many login attempts. Please wait a minute and try again.",
+			})
 			return
 		}
 
@@ -140,7 +199,7 @@ func LoginPOST(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
@@ -154,7 +213,7 @@ func LoginPOST(db *sql.DB) http.HandlerFunc {
 		}
 		// Password is correct. Create a new session for this user
 		if err := auth.CreateSession(w, db, user.ID); err != nil {
-			http.Error(w, "Interncal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
@@ -169,7 +228,7 @@ func LogoutPOST(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// DeleteSession handles both the DB deletion and cookie clearing.
 		if err := auth.DeleteSession(w, r, db); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 

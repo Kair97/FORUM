@@ -18,18 +18,18 @@ import (
 func DeletePostPOST(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		postID, err := strconv.ParseInt(r.FormValue("post_id"), 10, 64)
 		if err != nil || postID <= 0 {
-			http.Error(w, "Invalid post ID", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		if err := database.DeletePost(db, postID); err != nil {
-			http.Error(w, "Could not delete post", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
@@ -41,24 +41,24 @@ func DeletePostPOST(db *sql.DB) http.HandlerFunc {
 func DeleteAnyCommentPOST(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		commentID, err := strconv.ParseInt(r.FormValue("comment_id"), 10, 64)
 		if err != nil || commentID <= 0 {
-			http.Error(w, "Invalid comment ID", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		postID, err := strconv.ParseInt(r.FormValue("post_id"), 10, 64)
 		if err != nil || postID <= 0 {
-			http.Error(w, "Invalid post ID", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		if err := database.DeleteAnyComment(db, commentID); err != nil {
-			http.Error(w, "Could not delete comment", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
@@ -71,7 +71,7 @@ func AdminPanelGET(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		users, err := database.GetAllUsers(db)
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
@@ -89,13 +89,13 @@ func AdminPanelGET(db *sql.DB) http.HandlerFunc {
 func SetRolePOST(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		targetUserID, err := strconv.ParseInt(r.FormValue("user_id"), 10, 64)
 		if err != nil || targetUserID <= 0 {
-			http.Error(w, "Invalid user ID", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
@@ -104,12 +104,12 @@ func SetRolePOST(db *sql.DB) http.HandlerFunc {
 		// Prevent admin from demoting themselves accidentally.
 		currentUserID, _ := utils.GetUserID(r)
 		if targetUserID == currentUserID {
-			http.Error(w, "Cannot change your own role", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		if err := database.SetUserRole(db, targetUserID, role); err != nil {
-			http.Error(w, "Failed to update role", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 

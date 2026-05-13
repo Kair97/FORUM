@@ -1,0 +1,55 @@
+{{define "content"}}
+<div class="auth-page">
+    <div class="auth-card" style="text-align:center">
+        <div style="font-size:3rem; margin-bottom:1rem">
+            {{if eq .Error "404"}}
+                404
+            {{else if eq .Error "403"}}
+                403
+            {{else if eq .Error "405"}}
+                405
+            {{else if eq .Error "400"}}
+                400
+            {{else if eq .Error "500"}}
+                500
+            {{else}}
+                Error
+            {{end}}
+        </div>
+
+        <h2 style="margin-bottom:0.5rem">
+            {{if eq .Error "400"}}
+                Bad Request
+            {{else if eq .Error "403"}}
+                Forbidden
+            {{else if eq .Error "404"}}
+                Page Not Found
+            {{else if eq .Error "405"}}
+                Method Not Allowed
+            {{else if eq .Error "500"}}
+                Internal Server Error
+            {{else}}
+                Something Went Wrong
+            {{end}}
+        </h2>
+
+        <p style="color:var(--text-muted); margin-bottom:1.5rem">
+            {{if eq .Error "400"}}
+                The request was invalid. Please check the URL or form data and try again.
+            {{else if eq .Error "403"}}
+                You do not have permission to access this page or perform this action.
+            {{else if eq .Error "404"}}
+                The page you're looking for doesn't exist.
+            {{else if eq .Error "405"}}
+                This page does not support that request method.
+            {{else if eq .Error "500"}}
+                The server had a problem. Please try again later.
+            {{else}}
+                An error occurred. Please try again.
+            {{end}}
+        </p>
+
+        <a href="/" class="btn btn-primary">Go Home</a>
+    </div>
+</div>
+{{end}}

@@ -21,7 +21,7 @@ func CreateCommentPOST(db *sql.DB) http.HandlerFunc {
 		userID, _ := utils.GetUserID(r)
 
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
@@ -30,20 +30,25 @@ func CreateCommentPOST(db *sql.DB) http.HandlerFunc {
 
 		postID, err := strconv.ParseInt(postIDStr, 10, 64)
 		if err != nil {
-			http.Error(w, "Invalid post ID", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		// Validate comment must not be empty
 		if content == "" {
-			http.Error(w, "Comment cannot be empty", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
+			return
+		}
+
+		if len(content) > 2000 {
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		// Insert the comment into the database
 		_, err = database.CreateComment(db, postID, userID, content)
 		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
@@ -57,7 +62,7 @@ func DeleteCommentPOST(db *sql.DB) http.HandlerFunc {
 		userID, _ := utils.GetUserID(r)
 
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
@@ -66,18 +71,18 @@ func DeleteCommentPOST(db *sql.DB) http.HandlerFunc {
 
 		commentID, err := strconv.ParseInt(commentIDStr, 10, 64)
 		if err != nil || commentID <= 0 {
-			http.Error(w, "Invalid comment ID", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		postID, err := strconv.ParseInt(postIDStr, 10, 64)
 		if err != nil || postID <= 0 {
-			http.Error(w, "Invalid post ID", http.StatusBadRequest)
+			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}
 
 		if err := database.DeleteComment(db, commentID, userID); err != nil {
-			http.Error(w, "Could not delete comment", http.StatusForbidden)
+			utils.RenderError(w, http.StatusForbidden)
 			return
 		}
 

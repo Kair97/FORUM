@@ -2,7 +2,6 @@ package auth
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -10,8 +9,6 @@ import (
 	"github.com/gofrs/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
-
-var lolError = errors.New("LOL")
 
 // bcryptCost controls how many rounds bcrypt runs.
 // 12 is the recommended minimum for production as of 2024.
@@ -62,6 +59,12 @@ func CheckPassword(password, hash string) error {
 // and sets it as a cookie on the HTTP response.
 // Call this immediately after a successful login or registration.
 func CreateSession(w http.ResponseWriter, db *sql.DB, userID int64) error {
+
+	_, err := db.Exec("DELETE FROM sessions WHERE user_id = ?", userID)
+	if err != nil {
+		return fmt.Errorf("failed to clear old session: %w", err)
+	}
+
 	// Generate a new random UUID for the session token.
 	// uuid.NewV4() uses the system's cryptographically secure random source.
 	token, err := uuid.NewV4()

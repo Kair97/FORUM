@@ -33,29 +33,28 @@ func main() {
 
 	http.HandleFunc("/mod/delete-post", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 			return
 		}
 		middleware.RequireModerator(handlers.DeletePostPOST(db), db)(w, r)
 	})
 	http.HandleFunc("/mod/delete-comment", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 		}
 		middleware.RequireModerator(handlers.DeleteAnyCommentPOST(db), db)(w, r)
 	})
 
 	http.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 			return
 		}
 		middleware.RequireAdmin(handlers.AdminPanelGET(db), db)(w, r)
 	})
 	http.HandleFunc("/admin/set-role", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 			return
 		}
 		middleware.RequireAdmin(handlers.SetRolePOST(db), db)(w, r)
@@ -68,7 +67,7 @@ func main() {
 		case http.MethodPost:
 			handlers.RegisterPOST(db)(w, r)
 		default:
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 		}
 	})
 
@@ -79,13 +78,13 @@ func main() {
 		case http.MethodPost:
 			handlers.LoginPOST(db)(w, r)
 		default:
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 		}
 	})
 
 	http.HandleFunc("/comment/delete", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 			return
 		}
 		middleware.RequireAuth(handlers.DeleteCommentPOST(db), db)(w, r)
@@ -96,7 +95,7 @@ func main() {
 		case http.MethodPost:
 			handlers.LogoutPOST(db)(w, r)
 		default:
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 		}
 	})
 
@@ -110,7 +109,7 @@ func main() {
 	// Single post page - optional auth (guests can view)
 	http.HandleFunc("/post", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 			return
 		}
 		middleware.OptionalAuth(handlers.PostGET(db), db)(w, r)
@@ -124,14 +123,14 @@ func main() {
 		case http.MethodPost:
 			middleware.RequireAuth(handlers.CreatePostPOST(db), db)(w, r)
 		default:
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 		}
 	})
 
 	// Create comment - requires auth
 	http.HandleFunc("/comment/create", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 			return
 		}
 		middleware.RequireAuth(handlers.CreateCommentPOST(db), db)(w, r)
@@ -140,7 +139,7 @@ func main() {
 	// Like/Dislike - requires auth
 	http.HandleFunc("/like", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			utils.RenderError(w, http.StatusMethodNotAllowed)
 			return
 		}
 		middleware.RequireAuth(handlers.ToggleLikePOST(db), db)(w, r)
@@ -155,7 +154,9 @@ func main() {
 
 	log.Println("Server starting on http://localhost:8080")
 
-	err = http.ListenAndServe(":8080", nil)
+	handler := middleware.SecurityHeaders(http.DefaultServeMux)
+
+	err = http.ListenAndServe(":8080", handler)
 	if err != nil {
 		log.Fatal("Server failed to start:", err)
 	}
