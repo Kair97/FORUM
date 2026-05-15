@@ -221,6 +221,7 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 
 		// Validate: title and content must not be empty
 		if title == "" || content == "" {
+			w.WriteHeader(http.StatusBadRequest)
 			categories, _ := database.GetAllCategories(db)
 			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
 				Categories: categories,
@@ -235,6 +236,7 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 
 		if len(title) > 200 {
 			// show error on form
+			w.WriteHeader(http.StatusBadRequest)
 			categories, _ := database.GetAllCategories(db)
 			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
 				Categories: categories,
@@ -245,6 +247,7 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if len(content) > 10000 {
+			w.WriteHeader(http.StatusBadRequest)
 			categories, _ := database.GetAllCategories(db)
 			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
 				Categories: categories,
@@ -260,6 +263,7 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 		// r.Form["category_ids"] returns []string of all selected values.
 		categoryStrs := r.Form["category_ids"]
 		if len(categoryStrs) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
 			categories, _ := database.GetAllCategories(db)
 			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
 				Categories: categories,
@@ -284,6 +288,7 @@ func CreatePostPOST(db *sql.DB) http.HandlerFunc {
 
 		imagePath, err := utils.SaveUploadImage(r, "image")
 		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
 			categories, _ := database.GetAllCategories(db)
 			utils.RenderTemplate(w, "web/templates/create-post.html", models.Template{
 				Categories: categories,

@@ -24,7 +24,7 @@ func Init(dbPath string, schemaPath string) (*sql.DB, error) {
 	// sql.Open does not actually connect to the database yet.
 	// It just validates the arguments and prepares the connection pool.
 	// The first real connection happens on the first query.
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

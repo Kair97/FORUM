@@ -41,6 +41,7 @@ func main() {
 	http.HandleFunc("/mod/delete-comment", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			utils.RenderError(w, http.StatusMethodNotAllowed)
+			return
 		}
 		middleware.RequireModerator(handlers.DeleteAnyCommentPOST(db), db)(w, r)
 	})
