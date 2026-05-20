@@ -13,8 +13,8 @@
                 </li>
                 {{range .Categories}}
                 <li>
-                    <a href="/?category_id={{.ID}}"
-                       class="filter-link {{if eq $.CategoryID .ID}}active{{end}}">
+                    <a href="?category_id={{.ID}}"
+                       class="catactive filter-link {{if eq $.CategoryID .ID}}active{{end}}">
                         # {{.Name}}
                     </a>
                 </li>

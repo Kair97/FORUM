@@ -58,7 +58,7 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 		switch {
 		case categoryIDStr != "":
 			// Filter by category - available to all users.
-			categoryID, err := strconv.ParseInt(categoryIDStr, 10, 64)
+			categoryID, err = strconv.ParseInt(categoryIDStr, 10, 64)
 			if err != nil {
 				utils.RenderError(w, http.StatusBadRequest)
 				return
