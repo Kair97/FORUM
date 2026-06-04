@@ -4,36 +4,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forum</title>
+    <title>forum vol. 01</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap Icons (icon fonts only — no CSS framework) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
 
-<nav class="navbar">
-    <a href="/" class="nav-brand">💬 Forum</a>
-    <div class="nav-links">
-    {{if .LoggedIn}}
-        <span class="nav-username">👤 {{.Username}}</span>
+<!-- ── Site Header ── -->
+<header class="site-header">
+    <div class="header-inner">
 
-        {{if eq .Role "admin"}}
-        <a href="/admin" class="btn btn-ghost" style="font-size:0.82rem">⚙️ Admin</a>
-        {{end}}
+        <a href="/" class="brand">§ forum vol. 01</a>
 
-        <a href="/post/create" class="btn btn-primary">+ New Post</a>
+        <nav class="header-nav" id="header-nav">
+            <a href="/" class="nav-link">feed</a>
+            {{if .LoggedIn}}
+            <a href="/?filter=created" class="nav-link">my posts</a>
+            {{end}}
+            {{if eq .Role "admin"}}
+            <a href="/admin" class="nav-link">admin</a>
+            {{end}}
+        </nav>
 
-        <form action="/logout" method="POST" style="display:inline">
-            <button type="submit" class="btn btn-ghost">Logout</button>
-        </form>
-    {{else}}
-        <a href="/login" class="btn btn-ghost">Login</a>
-        <a href="/register" class="btn btn-primary">Register</a>
-    {{end}}
-</div>
-</nav>
+        <div class="header-actions">
+            {{if .LoggedIn}}
+            <span class="header-user">@{{.Username}}</span>
+            <a href="/post/create" class="btn btn-primary btn-sm">+ new post</a>
+            <form action="/logout" method="POST" style="display:inline;">
+                <button type="submit" class="btn btn-ghost btn-sm">logout</button>
+            </form>
+            {{else}}
+            <a href="/login"    class="btn btn-secondary btn-sm">login</a>
+            <a href="/register" class="btn btn-primary btn-sm">register</a>
+            {{end}}
+        </div>
 
-<div class="container">
-    {{block "content" .}}{{end}}
-</div>
+        <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu">
+            <i class="bi bi-list"></i>
+        </button>
+
+    </div>
+</header>
+
+<!-- ── Page Content ── -->
+<main class="main-content">
+    <div class="container">
+        {{block "content" .}}{{end}}
+    </div>
+</main>
+
+<!-- ── Footer ── -->
+<footer class="site-footer">
+    // forum vol. 01 &middot; built with go &amp; love
+</footer>
+
+<script>
+    (function() {
+        var toggle = document.getElementById('menu-toggle');
+        var nav    = document.getElementById('header-nav');
+        if (toggle && nav) {
+            toggle.addEventListener('click', function() {
+                nav.classList.toggle('open');
+            });
+        }
+    })();
+</script>
 
 </body>
 </html>

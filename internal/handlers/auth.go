@@ -20,9 +20,6 @@ func RegisterGET(db *sql.DB) http.HandlerFunc {
 
 func RegisterPOST(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// r.ParseFrom() parses the request body as form data
-		// And must be called before r.FormValu() will work
-		// returns error if the body is malformed
 		if err := r.ParseForm(); err != nil {
 			utils.RenderError(w, http.StatusBadRequest)
 			return
@@ -32,60 +29,50 @@ func RegisterPOST(db *sql.DB) http.HandlerFunc {
 		username := strings.TrimSpace(r.FormValue("username"))
 		password := r.FormValue("password")
 
-		if email == "" || username == "" || password == "" {
+		// showError is a helper that re-renders the register form with
+		// the error message AND the user's already-typed email and username,
+		// so they don't have to retype everything after a mistake.
+		showError := func(msg string) {
 			w.WriteHeader(http.StatusBadRequest)
 			utils.RenderTemplate(w, register, models.Template{
-				Error: "All fields are required",
+				Error:        msg,
+				FormEmail:    email,
+				FormUsername: username,
 			})
+		}
 
+		if email == "" || username == "" || password == "" {
+			showError("All fields are required")
 			return
 		}
 
-		// Length limits — prevent database abuse and UI breakage.
 		if len(email) > 254 {
-			w.WriteHeader(http.StatusBadRequest)
-			utils.RenderTemplate(w, register, models.Template{
-				Error: "Email must be 254 characters or less",
-			})
+			showError("Email must be 254 characters or less")
 			return
 		}
 		if len(username) > 30 {
-			w.WriteHeader(http.StatusBadRequest)
-			utils.RenderTemplate(w, register, models.Template{
-				Error: "Username must be 30 characters or less",
-			})
+			showError("Username must be 30 characters or less")
 			return
 		}
+		// bcrypt silently truncates passwords over 72 bytes,
+		// so we reject them explicitly so the user knows the limit.
 		if len(password) > 72 {
-			// bcrypt silently truncates passwords over 72 bytes.
-			// We reject them explicitly so the user knows the limit.
-			w.WriteHeader(http.StatusBadRequest)
-			utils.RenderTemplate(w, register, models.Template{
-				Error: "Password must be 72 characters or less",
-			})
+			showError("Password must be 72 characters or less")
 			return
 		}
-
 		if len(password) < 6 {
-			w.WriteHeader(http.StatusBadRequest)
-			utils.RenderTemplate(w, register, models.Template{
-				Error: "Password is too short!",
-			})
-
+			showError("Password is too short!")
 			return
 		}
 
-		// Check weather email already used or not
+		// Check whether email is already registered.
 		var existingID int64
 		err := db.QueryRow(
 			"SELECT id FROM users WHERE email = ?", email,
 		).Scan(&existingID)
 
 		if err == nil {
-			w.WriteHeader(http.StatusBadRequest)
-			utils.RenderTemplate(w, register, models.Template{
-				Error: "Email already registered",
-			})
+			showError("Email already registered")
 			return
 		}
 		if err != sql.ErrNoRows {
@@ -93,18 +80,13 @@ func RegisterPOST(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Check whether username is already used.
-		// The database also has UNIQUE(username), but checking here lets us
-		// show a clear registration error instead of a generic server error.
+		// Check whether username is already taken.
 		err = db.QueryRow(
 			"SELECT id FROM users WHERE username = ?", username,
 		).Scan(&existingID)
 
 		if err == nil {
-			w.WriteHeader(http.StatusBadRequest)
-			utils.RenderTemplate(w, register, models.Template{
-				Error: "Username already taken",
-			})
+			showError("Username already taken")
 			return
 		}
 		if err != sql.ErrNoRows {
@@ -118,9 +100,9 @@ func RegisterPOST(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Insert new user to database
 		result, err := db.Exec(
-			"INSERT INTO users (email, username, password_hash, role) VALUES (?, ?, ?, ?)", email, username, passwordHash, "user",
+			"INSERT INTO users (email, username, password_hash, role) VALUES (?, ?, ?, ?)",
+			email, username, passwordHash, "user",
 		)
 		if err != nil {
 			utils.RenderError(w, http.StatusInternalServerError)
@@ -139,7 +121,6 @@ func RegisterPOST(db *sql.DB) http.HandlerFunc {
 		}
 
 		http.Redirect(w, r, "/", http.StatusSeeOther)
-
 	}
 }
 
@@ -156,83 +137,77 @@ func LoginPOST(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		email := strings.TrimSpace(r.FormValue("email"))
+
 		ip := r.RemoteAddr
 		if i := strings.LastIndex(ip, ":"); i != -1 {
 			ip = ip[:i]
 		}
 
-		if !utils.LoginLimiter.Allow(ip) {
+		// showError re-renders the login form with the error message
+		// AND keeps the user's email in the field so they don't retype it.
+		// Note: we never keep the password — that is a security best practice.
+		showError := func(status int, msg string) {
+			w.WriteHeader(status)
 			utils.RenderTemplate(w, login, models.Template{
-				Error: "Too many login attempts. Please wait a minute and try again.",
+				Error:     msg,
+				FormEmail: email,
 			})
+		}
+
+		if !utils.LoginLimiter.Allow(ip) {
+			showError(http.StatusTooManyRequests, "Too many login attempts. Please wait a minute and try again.")
 			return
 		}
 
-		email := strings.TrimSpace(r.FormValue("email"))
 		password := r.FormValue("password")
 
 		if email == "" || password == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			utils.RenderTemplate(w, login, models.Template{
-				Error: "All fields are required!",
-			})
+			showError(http.StatusBadRequest, "All fields are required!")
 			return
 		}
 
 		var user models.User
 		err := db.QueryRow(
-			`Select id, email, username, password_hash,role
-			from users where email = ?`,
+			`SELECT id, email, username, password_hash, role
+			 FROM users WHERE email = ?`,
 			email,
 		).Scan(&user.ID, &user.Email, &user.Username, &user.PasswordHash, &user.Role)
 
 		if err == sql.ErrNoRows {
-			// No user found with this email
-			// Important: we use same error message as wrong password
-			// So that it prevents user enumeration --> an attacker cannot tell
-			// whether email exists or password was wrong
-			w.WriteHeader(http.StatusUnauthorized)
-			utils.RenderTemplate(w, login, models.Template{
-				Error: "Invalid email or password",
-			})
+			// Same error message for "email not found" and "wrong password"
+			// so an attacker cannot tell which one is the real problem.
+			showError(http.StatusUnauthorized, "Invalid email or password")
 			return
 		}
-
 		if err != nil {
 			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
-		// Verify the password
 		if err := auth.CheckPassword(password, user.PasswordHash); err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
-			utils.RenderTemplate(w, login, models.Template{
-				Error: "Invalid email or password",
-			})
+			showError(http.StatusUnauthorized, "Invalid email or password")
 			return
 		}
-		// Password is correct. Create a new session for this user
+
 		if err := auth.CreateSession(w, db, user.ID); err != nil {
 			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
-		// Login is successful - redirect to homepage
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
 }
 
-// Logout deletes the session and clears the cookie.
-// We use POST for logout - not GET - because logout is state changing action.
+// LogoutPOST deletes the session and clears the cookie.
+// Uses POST (not GET) because logout changes server state.
 func LogoutPOST(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// DeleteSession handles both the DB deletion and cookie clearing.
 		if err := auth.DeleteSession(w, r, db); err != nil {
 			utils.RenderError(w, http.StatusInternalServerError)
 			return
 		}
 
-		// Redirect to homepage after logout
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
 }

@@ -1,58 +1,83 @@
- {{define "content"}}
+{{define "content"}}
+<div class="compose-wrap">
 
- <div class="form-page">
-    <h2>Create New Post</h2>
+    <p class="compose-mono-label">// compose</p>
+    <h1 class="compose-title">Start a thread.</h1>
 
     {{if .Error}}
-    <div class="error-banner">{{.Error}}</div>
+    <div class="form-error">
+        <i class="bi bi-exclamation-circle"></i> {{.Error}}
+    </div>
     {{end}}
 
-    <form action="/post/create" method="POST" class="post-form" enctype="multipart/form-data">
+    <div class="compose-card">
+        <form action="/post/create" method="POST" enctype="multipart/form-data">
 
+            <div class="form-group">
+                <label for="title" class="form-label">Title</label>
+                <input type="text" id="title" name="title"
+                       class="form-input"
+                       placeholder="Give your post a clear title"
+                       maxlength="200"
+                       required>
+            </div>
 
-        <div class="form-group">
-            <label for="title">Title</label>
-            <input type="text" id="title" name="title" placeholder="Post Title" required>
-        </div>
+            <div class="form-group">
+                <label for="content" class="form-label">Body</label>
+                <textarea id="content" name="content"
+                          class="form-textarea"
+                          placeholder="Write your post here..."
+                          rows="8"
+                          required></textarea>
+            </div>
 
-        <div class="form-group">
-            <label for="content">Content</label>
-            <textarea id="content" name="content" placeholder="Write your post..." rows="8" required></textarea>
-        </div>
-        
-        <div class="form-group">
-            <label>Categories (select at least one)</label>
-            <div class="category-checkboxes">
-                {{range .Categories}}
-                <label class="checkbox-label">
-                    <input type="checkbox"
-                    name="category_ids"
-                    value="{{.ID}}">
-                    {{.Name}}
+            <div class="form-group">
+                <label class="form-label">
+                    Categories
+                    <span class="form-label-hint">(select at least one)</span>
                 </label>
-                {{end}}
+                <div class="cat-pills">
+                    {{range .Categories}}
+                    <div class="cat-pill">
+                        <input type="checkbox" name="category_ids" value="{{.ID}}" id="cat-{{.ID}}">
+                        <label for="cat-{{.ID}}">{{.Name}}</label>
+                    </div>
+                    {{end}}
+                </div>
             </div>
-        </div>
 
-        <div class="form-group">
-            <label for="image">Image (optional - JPEG, PNG, GIF, WebP - max 10MB)</label>
-            <div class="file-input-wrapper">
-                <input type="file" id="image" name="image" accept="image/jpeg,image/png,image/gif,image/webp" class="file-input">
-                <label for="image" class="file-label">📎 Choose image</label>
-                <span class="file-name" id="file-name">No file chosen</span>
+            <div class="form-group">
+                <label class="form-label">
+                    Image
+                    <span class="form-label-hint">(optional &mdash; JPEG, PNG, GIF, WebP &mdash; max 10 MB)</span>
+                </label>
+                <div class="file-input-row">
+                    <input type="file" id="image" name="image"
+                           accept="image/jpeg,image/png,image/gif,image/webp"
+                           class="file-input-hidden">
+                    <label for="image" class="file-input-label">
+                        <i class="bi bi-paperclip"></i> choose image
+                    </label>
+                    <span class="file-name" id="file-name">no file chosen</span>
+                </div>
             </div>
-        </div>
 
-        <button type="submit" class="btn btn-primary">Publish Post</button>
-    </form>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-send"></i> publish post
+                </button>
+                <a href="/" class="btn btn-ghost">cancel</a>
+            </div>
 
- </div>
+        </form>
+    </div>
 
- <script>
+</div>
+
+<script>
     document.getElementById('image').addEventListener('change', function() {
-        const name = this.files[0] ? this.files[0].name : 'No file chosen';
-        document.getElementById('file-name').textContent = name
+        var name = this.files[0] ? this.files[0].name : 'no file chosen';
+        document.getElementById('file-name').textContent = name;
     });
- </script>
-
- {{end}}
+</script>
+{{end}}

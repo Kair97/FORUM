@@ -15,8 +15,13 @@ import (
 // Accepts: target_type (post|comment), target_id, is_like (1|0)
 func ToggleLikePOST(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Get logged-in user form context.
-		userID, _ := utils.GetUserID(r)
+		// Check if the user is logged in.
+		// If not, send them to the login page instead of silently failing.
+		userID, loggedIn := utils.GetUserID(r)
+		if !loggedIn {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
 
 		if err := r.ParseForm(); err != nil {
 			utils.RenderError(w, http.StatusBadRequest)

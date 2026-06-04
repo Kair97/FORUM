@@ -1,31 +1,49 @@
- {{define "content"}}
-
- <div class="auth-page">
+{{define "content"}}
+<div class="auth-wrap">
     <div class="auth-card">
-        <h2>Login</h2>
+
+        <div class="auth-mono-brand">§ forum vol. 01</div>
+        <div class="auth-mono-sub">// welcome back</div>
+
+        <h2 class="auth-title">Sign in to your account</h2>
 
         {{if .Error}}
-        <div class="error-banner">{{.Error}}</div>
+        <div class="form-error">
+            <i class="bi bi-exclamation-circle"></i> {{.Error}}
+        </div>
         {{end}}
 
-        <form action="/login" method="POST" class="auth-form">
+        <form action="/login" method="POST">
+
             <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" placeholder="your@gmail.com" required>
+                <label for="email" class="form-label">Email</label>
+                <input type="email" id="email" name="email"
+                       class="form-input"
+                       placeholder="your@email.com"
+                       value="{{.FormEmail}}"
+                       required>
             </div>
 
             <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" placeholder="*****" required>
+                <label for="password" class="form-label">Password</label>
+                <input type="password" id="password" name="password"
+                       class="form-input"
+                       placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
+                       required>
             </div>
 
-            <button type="submit" class="btn btn-primary btn-full">
-                Login
+            <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
+                <i class="bi bi-box-arrow-in-right"></i> login
             </button>
+
         </form>
 
-        <p class="auth-switch">Don't have an account? <a href="/register">Register</a></p>
+        <hr class="auth-divider">
+
+        <p class="auth-footer-text">
+            Don&rsquo;t have an account? <a href="/register">register</a>
+        </p>
 
     </div>
- </div>
- {{end}}
+</div>
+{{end}}

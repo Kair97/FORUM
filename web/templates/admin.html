@@ -1,12 +1,14 @@
 {{define "content"}}
-<div class="form-page">
-    <h2>⚙️ Admin Panel</h2>
-    <p style="color:var(--text-muted); margin-bottom:1.5rem">
-        Manage user roles. You cannot change your own role.
-    </p>
 
-    <div class="admin-table-wrapper">
-        <table class="admin-table">
+<div class="page-header">
+    <p class="page-mono-label">// admin panel</p>
+    <h1 class="page-title">User Management</h1>
+    <p class="page-subtitle">Manage user roles. You cannot change your own role.</p>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="data-table">
             <thead>
                 <tr>
                     <th>ID</th>
@@ -19,32 +21,27 @@
             <tbody>
                 {{range .Users}}
                 <tr>
-                    <td>{{.ID}}</td>
-                    <td>{{.Username}}</td>
-                    <td>{{.Email}}</td>
+                    <td class="mono">{{.ID}}</td>
+                    <td>
+                        <span class="mono">@{{.Username}}</span>
+                    </td>
+                    <td style="color:var(--ink-3);">{{.Email}}</td>
                     <td>
                         <span class="role-badge role-{{.Role}}">{{.Role}}</span>
                     </td>
                     <td>
                         {{if ne .ID $.UserID}}
-                        <form action="/admin/set-role" method="POST"
-                              style="display:flex; gap:0.5rem; align-items:center">
+                        <form action="/admin/set-role" method="POST" class="inline-form">
                             <input type="hidden" name="user_id" value="{{.ID}}">
-                            <select name="role" class="role-select">
-                                <option value="user"
-                                    {{if eq .Role "user"}}selected{{end}}>user</option>
-                                <option value="moderator"
-                                    {{if eq .Role "moderator"}}selected{{end}}>moderator</option>
-                                <option value="admin"
-                                    {{if eq .Role "admin"}}selected{{end}}>admin</option>
+                            <select name="role" class="inline-select">
+                                <option value="user"      {{if eq .Role "user"}}selected{{end}}>user</option>
+                                <option value="moderator" {{if eq .Role "moderator"}}selected{{end}}>moderator</option>
+                                <option value="admin"     {{if eq .Role "admin"}}selected{{end}}>admin</option>
                             </select>
-                            <button type="submit" class="btn btn-primary"
-                                    style="padding:0.3rem 0.7rem; font-size:0.8rem">
-                                Save
-                            </button>
+                            <button type="submit" class="btn btn-primary btn-sm">save</button>
                         </form>
                         {{else}}
-                        <span style="color:var(--text-muted); font-size:0.82rem">
+                        <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--ink-4);">
                             (you)
                         </span>
                         {{end}}
@@ -55,4 +52,5 @@
         </table>
     </div>
 </div>
+
 {{end}}

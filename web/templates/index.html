@@ -1,21 +1,134 @@
 {{define "content"}}
-<div class="layout">
+<div class="feed-layout">
 
-    <aside class="sidebar">
-        <div class="filter-section">
-            <h3>Categories</h3>
-            <ul class="filter-list">
+    <!-- ── Main Feed ── -->
+    <div class="feed-main">
+
+        <!-- Masthead -->
+        <div class="masthead">
+            <p class="masthead-label">// the feed &middot; <span id="feed-date"></span></p>
+            <h1 class="masthead-headline">What&rsquo;s worth talking about.</h1>
+        </div>
+
+        <!-- Filter tabs -->
+        <div class="filter-tabs">
+            <a href="/" class="filter-tab {{if and (not .CategoryID) (not .Filter)}}active{{end}}">all</a>
+            {{if .LoggedIn}}
+            <a href="/?filter=created" class="filter-tab {{if eq .Filter "created"}}active{{end}}">my posts</a>
+            <a href="/?filter=liked"   class="filter-tab {{if eq .Filter "liked"}}active{{end}}">liked</a>
+            {{end}}
+        </div>
+
+        <!-- Active category label -->
+        {{if .CategoryID}}
+        <p style="font-family:var(--font-mono);font-size:0.75rem;color:var(--ink-3);margin-bottom:16px;">
+            // category &middot;
+            {{range .Categories}}{{if eq $.CategoryID .ID}}<strong style="color:var(--ink);">{{.Name}}</strong>{{end}}{{end}}
+            &nbsp;<a href="/" style="color:var(--ink-4);font-size:0.7rem;">&#x2715; clear</a>
+        </p>
+        {{end}}
+
+        <!-- Empty state -->
+        {{if not .Posts}}
+        <div class="empty-state">
+            <p>No posts yet. Start the conversation.</p>
+            {{if .LoggedIn}}
+            <a href="/post/create" class="btn btn-primary btn-sm">start a thread &larr;</a>
+            {{else}}
+            <a href="/register" class="btn btn-primary btn-sm">join to post</a>
+            {{end}}
+        </div>
+        {{end}}
+
+        <!-- Post cards -->
+        {{range .Posts}}
+        <div id="post-{{.ID}}" class="post-card">
+
+            <!-- Vote rail -->
+            <div class="vote-rail">
+                {{if $.LoggedIn}}
+                <form action="/like" method="POST">
+                    <input type="hidden" name="target_type" value="post">
+                    <input type="hidden" name="target_id"   value="{{.ID}}">
+                    <input type="hidden" name="is_like"     value="1">
+                    <input type="hidden" name="redirect"    value="/#post-{{.ID}}">
+                    <button type="submit" class="vote-btn-up {{if eq .UserVote 1}}voted{{end}}" title="upvote">
+                        <i class="bi bi-arrow-up-short"></i>
+                    </button>
+                </form>
+                {{else}}
+                <a href="/login" class="vote-btn-up" title="login to vote">
+                    <i class="bi bi-arrow-up-short"></i>
+                </a>
+                {{end}}
+
+                <span class="vote-score">{{.LikeCount}}</span>
+
+                {{if $.LoggedIn}}
+                <form action="/like" method="POST">
+                    <input type="hidden" name="target_type" value="post">
+                    <input type="hidden" name="target_id"   value="{{.ID}}">
+                    <input type="hidden" name="is_like"     value="0">
+                    <input type="hidden" name="redirect"    value="/#post-{{.ID}}">
+                    <button type="submit" class="vote-btn-down {{if eq .UserVote -1}}voted{{end}}" title="downvote">
+                        <i class="bi bi-arrow-down-short"></i>
+                    </button>
+                </form>
+                {{else}}
+                <a href="/login" class="vote-btn-down" title="login to vote">
+                    <i class="bi bi-arrow-down-short"></i>
+                </a>
+                {{end}}
+            </div>
+
+            <!-- Post content -->
+            <div class="post-body-area">
+
+                {{if .Categories}}
+                <div class="post-cats">
+                    {{range .Categories}}
+                    <span class="cat-tag">{{.}}</span>
+                    {{end}}
+                </div>
+                {{end}}
+
+                <a href="/post?id={{.ID}}" class="post-title-link">{{.Title}}</a>
+
+                <div class="post-meta-row">
+                    <span class="post-author">@{{.Username}}</span>
+                </div>
+
+                {{if .ImagePath}}
+                <img src="{{.ImagePath}}" alt="Post image" class="post-card-image">
+                {{end}}
+
+                <p class="post-excerpt">
+                    {{if gt (len .Content) 200}}{{slice .Content 0 200}}&hellip;{{else}}{{.Content}}{{end}}
+                </p>
+
+                <a href="/post?id={{.ID}}" class="post-read-link">read more &rarr;</a>
+
+            </div>
+        </div>
+        {{end}}
+
+    </div>
+
+    <!-- ── Category Rail (sidebar) ── -->
+    <aside class="category-rail">
+
+        <div class="rail-section">
+            <p class="rail-heading">browse</p>
+            <ul class="rail-links">
                 <li>
-                    <a href="/"
-                       class="filter-link {{if and (not .CategoryID) (not .Filter)}}active{{end}}">
-                        🌐 All Posts
+                    <a href="/" class="rail-link {{if and (not .CategoryID) (not .Filter)}}active{{end}}">
+                        <i class="bi bi-globe2"></i> all posts
                     </a>
                 </li>
                 {{range .Categories}}
                 <li>
-                    <a href="?category_id={{.ID}}"
-                       class="catactive filter-link {{if eq $.CategoryID .ID}}active{{end}}">
-                        # {{.Name}}
+                    <a href="?category_id={{.ID}}" class="rail-link {{if eq $.CategoryID .ID}}active{{end}}">
+                        <i class="bi bi-hash"></i> {{.Name}}
                     </a>
                 </li>
                 {{end}}
@@ -23,117 +136,38 @@
         </div>
 
         {{if .LoggedIn}}
-        <div class="filter-section">
-            <h3>My Feed</h3>
-            <ul class="filter-list">
+        <div class="rail-section">
+            <p class="rail-heading">my feed</p>
+            <ul class="rail-links">
                 <li>
-                    <a href="/?filter=created"
-                       class="filter-link {{if eq .Filter "created"}}active{{end}}">
-                        ✏️ My Posts
+                    <a href="/?filter=created" class="rail-link {{if eq .Filter "created"}}active{{end}}">
+                        <i class="bi bi-pencil"></i> my posts
                     </a>
                 </li>
                 <li>
-                    <a href="/?filter=liked"
-                       class="filter-link {{if eq .Filter "liked"}}active{{end}}">
-                        ❤️ Liked Posts
+                    <a href="/?filter=liked" class="rail-link {{if eq .Filter "liked"}}active{{end}}">
+                        <i class="bi bi-heart"></i> liked posts
                     </a>
                 </li>
             </ul>
         </div>
         {{end}}
+
+        <div class="rail-section">
+            <p class="rail-heading">house rules</p>
+            <p class="rail-info">Be kind. Stay on topic. No spam or self-promotion. Have fun.</p>
+        </div>
+
     </aside>
 
-    <main class="main-content">
-
-        <div class="page-header">
-            <h2>
-                {{if .Filter}}
-                    {{if eq .Filter "created"}}My Posts{{end}}
-                    {{if eq .Filter "liked"}}Liked Posts{{end}}
-                {{else if .CategoryID}}
-                    {{range .Categories}}
-                        {{if eq $.CategoryID .ID}}# {{.Name}}{{end}}
-                    {{end}}
-                {{else}}
-                    Latest Posts
-                {{end}}
-            </h2>
-            {{if .LoggedIn}}
-            <a href="/post/create" class="btn btn-primary">+ New Post</a>
-            {{end}}
-        </div>
-
-        {{if not .Posts}}
-        <div class="empty-state">
-            <p>No posts found.</p>
-            {{if .LoggedIn}}
-            <a href="/post/create" class="btn btn-primary" style="margin-top:1rem">
-                Be the first to post
-            </a>
-            {{end}}
-        </div>
-        {{end}}
-
-        {{range .Posts}}
-        <article class="post-card">
-            <div class="post-header">
-                <a href="/post?id={{.ID}}" class="post-title">{{.Title}}</a>
-            </div>
-
-            {{if .ImagePath}}
-            <img src="{{.ImagePath}}" alt="Post image" class="post-card-image">
-            {{end}}
-
-            <div class="post-meta-row">
-                <span class="post-author">👤 {{.Username}}</span>
-                <div class="post-categories">
-                    {{range .Categories}}
-                    <span class="category-tag">{{.}}</span>
-                    {{end}}
-                </div>
-            </div>
-
-            <p class="post-preview">
-                {{if gt (len .Content) 180}}
-                    {{slice .Content 0 180}}...
-                {{else}}
-                    {{.Content}}
-                {{end}}
-            </p>
-
-            <div class="post-footer">
-                <div class="vote-row">
-                    {{if $.LoggedIn}}
-                    <form action="/like" method="POST" style="display:inline">
-                        <input type="hidden" name="target_type" value="post">
-                        <input type="hidden" name="target_id"   value="{{.ID}}">
-                        <input type="hidden" name="is_like"     value="1">
-                        <input type="hidden" name="redirect"    value="/">
-                        <button type="submit"
-                            class="vote-btn {{if eq .UserVote 1}}vote-liked{{end}}">
-                            👍 {{.LikeCount}}
-                        </button>
-                    </form>
-                    <form action="/like" method="POST" style="display:inline">
-                        <input type="hidden" name="target_type" value="post">
-                        <input type="hidden" name="target_id"   value="{{.ID}}">
-                        <input type="hidden" name="is_like"     value="0">
-                        <input type="hidden" name="redirect"    value="/">
-                        <button type="submit"
-                            class="vote-btn {{if eq .UserVote -1}}vote-disliked{{end}}">
-                            👎 {{.DislikeCount}}
-                        </button>
-                    </form>
-                    {{else}}
-                    <span class="vote-count">👍 {{.LikeCount}}</span>
-                    <span class="vote-count">👎 {{.DislikeCount}}</span>
-                    {{end}}
-                </div>
-                <a href="/post?id={{.ID}}" class="read-more">Read more →</a>
-            </div>
-        </article>
-        {{end}}
-
-    </main>
 </div>
+
+<script>
+    (function() {
+        var months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+        var d = new Date();
+        var el = document.getElementById('feed-date');
+        if (el) el.textContent = months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+    })();
+</script>
 {{end}}

@@ -76,4 +76,9 @@ type Template struct {
 	CategoryID int64
 	Users      []User
 	Role       string
+	// FormEmail and FormUsername let us put the user's typed text
+	// back into the form when there is a validation error,
+	// so the user does not have to type everything again.
+	FormEmail    string
+	FormUsername string
 }
