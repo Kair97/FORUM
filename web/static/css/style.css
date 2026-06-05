@@ -354,8 +354,9 @@ a { color: inherit; }
 
 .post-card-image {
   width: 100%;
-  max-height: 180px;
-  object-fit: cover;
+  max-height: 320px;
+  object-fit: contain;
+  background: var(--paper-2);
   border-radius: var(--radius-md);
   margin-bottom: 10px;
   border: 1px solid var(--border);
