@@ -53,16 +53,14 @@
                     <input type="hidden" name="is_like"     value="1">
                     <input type="hidden" name="redirect"    value="/#post-{{.ID}}">
                     <button type="submit" class="vote-btn-up {{if eq .UserVote 1}}voted{{end}}" title="upvote">
-                        <i class="bi bi-arrow-up-short"></i>
+                        <i class="bi bi-arrow-up-short"></i><span class="vote-count">{{.LikeCount}}</span>
                     </button>
                 </form>
                 {{else}}
                 <a href="/login" class="vote-btn-up" title="login to vote">
-                    <i class="bi bi-arrow-up-short"></i>
+                    <i class="bi bi-arrow-up-short"></i><span class="vote-count">{{.LikeCount}}</span>
                 </a>
                 {{end}}
-
-                <span class="vote-score">{{.LikeCount}}</span>
 
                 {{if $.LoggedIn}}
                 <form action="/like" method="POST">
@@ -71,12 +69,12 @@
                     <input type="hidden" name="is_like"     value="0">
                     <input type="hidden" name="redirect"    value="/#post-{{.ID}}">
                     <button type="submit" class="vote-btn-down {{if eq .UserVote -1}}voted{{end}}" title="downvote">
-                        <i class="bi bi-arrow-down-short"></i>
+                        <i class="bi bi-arrow-down-short"></i><span class="vote-count">{{.DislikeCount}}</span>
                     </button>
                 </form>
                 {{else}}
                 <a href="/login" class="vote-btn-down" title="login to vote">
-                    <i class="bi bi-arrow-down-short"></i>
+                    <i class="bi bi-arrow-down-short"></i><span class="vote-count">{{.DislikeCount}}</span>
                 </a>
                 {{end}}
             </div>

@@ -75,6 +75,54 @@
             });
         }
     })();
+
+    // AJAX voting — no page jump
+    document.addEventListener('submit', function(e) {
+        var form = e.target;
+        if (form.getAttribute('action') !== '/like') return;
+        e.preventDefault();
+
+        var parent = form.parentElement;
+        var forms = parent.querySelectorAll('form[action="/like"]');
+        if (forms.length < 2) return;
+
+        var likeForm = null, dislikeForm = null;
+        forms.forEach(function(f) {
+            var val = f.querySelector('[name="is_like"]').value;
+            if (val === '1') likeForm = f;
+            else dislikeForm = f;
+        });
+        if (!likeForm || !dislikeForm) return;
+
+        var isLike    = form === likeForm;
+        var clickedBtn = form.querySelector('button');
+        var otherBtn   = (isLike ? dislikeForm : likeForm).querySelector('button');
+        var clickedSpan = clickedBtn.querySelector('.vote-count');
+        var otherSpan   = otherBtn ? otherBtn.querySelector('.vote-count') : null;
+
+        var clickedCount = parseInt(clickedSpan.textContent) || 0;
+        var otherCount   = otherSpan ? (parseInt(otherSpan.textContent) || 0) : 0;
+        var wasVoted      = clickedBtn.classList.contains('voted');
+        var otherWasVoted = otherBtn && otherBtn.classList.contains('voted');
+
+        if (wasVoted) {
+            clickedBtn.classList.remove('voted');
+            clickedSpan.textContent = clickedCount - 1;
+        } else {
+            clickedBtn.classList.add('voted');
+            clickedSpan.textContent = clickedCount + 1;
+            if (otherWasVoted && otherSpan) {
+                otherBtn.classList.remove('voted');
+                otherSpan.textContent = otherCount - 1;
+            }
+        }
+
+        fetch('/like', {
+            method: 'POST',
+            body: new FormData(form),
+            redirect: 'manual'
+        }).catch(function() { location.reload(); });
+    });
 </script>
 
 </body>
