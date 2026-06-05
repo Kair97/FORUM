@@ -1,68 +1,113 @@
 {{define "content"}}
-<div class="feed-layout">
 
-    <!-- ── Main Feed ── -->
-    <div class="feed-main">
+<!-- Search results banner -->
+{{if .Search}}
+<div class="flex items-center gap-3 mb-6 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+    <i class="bi bi-search text-indigo-400"></i>
+    <span class="text-sm text-indigo-700">
+        Results for <strong>&ldquo;{{.Search}}&rdquo;</strong>
+        &mdash; {{len .Posts}} post{{if ne (len .Posts) 1}}s{{end}} found
+    </span>
+    <a href="/" class="ml-auto text-xs font-mono text-indigo-400 hover:text-indigo-600 transition-colors">
+        &times; clear
+    </a>
+</div>
+{{end}}
 
+<div class="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-8 items-start">
+
+    <!-- ══ MAIN FEED ══ -->
+    <div>
+
+        {{if not .Search}}
         <!-- Masthead -->
-        <div class="masthead">
-            <p class="masthead-label">// the feed &middot; <span id="feed-date"></span></p>
-            <h1 class="masthead-headline">What&rsquo;s worth talking about.</h1>
+        <div class="mb-6">
+            <p class="font-mono text-xs text-slate-400 mb-1">
+                // the feed &middot; <span id="feed-date"></span>
+            </p>
+            <h1 class="font-display text-2xl font-bold tracking-tight text-slate-900">
+                {{if eq .Filter "created"}}Your threads.
+                {{else if eq .Filter "liked"}}Posts you&rsquo;ve liked.
+                {{else if .CategoryID}}
+                    {{range .Categories}}{{if eq $.CategoryID .ID}}# {{.Name}}{{end}}{{end}}
+                {{else}}What&rsquo;s worth discussing.{{end}}
+            </h1>
         </div>
 
         <!-- Filter tabs -->
-        <div class="filter-tabs">
-            <a href="/" class="filter-tab {{if and (not .CategoryID) (not .Filter)}}active{{end}}">all</a>
+        <div class="flex items-center gap-1 border-b border-slate-200 mb-5">
+            <a href="/"
+               class="font-mono text-xs px-4 py-2 border-b-2 -mb-px transition-colors
+                      {{if and (not .CategoryID) (not .Filter)}}border-indigo-500 text-indigo-600 font-semibold{{else}}border-transparent text-slate-400 hover:text-slate-700{{end}}">
+                all
+            </a>
             {{if .LoggedIn}}
-            <a href="/?filter=created" class="filter-tab {{if eq .Filter "created"}}active{{end}}">my posts</a>
-            <a href="/?filter=liked"   class="filter-tab {{if eq .Filter "liked"}}active{{end}}">liked</a>
+            <a href="/?filter=created"
+               class="font-mono text-xs px-4 py-2 border-b-2 -mb-px transition-colors
+                      {{if eq .Filter "created"}}border-indigo-500 text-indigo-600 font-semibold{{else}}border-transparent text-slate-400 hover:text-slate-700{{end}}">
+                my posts
+            </a>
+            <a href="/?filter=liked"
+               class="font-mono text-xs px-4 py-2 border-b-2 -mb-px transition-colors
+                      {{if eq .Filter "liked"}}border-indigo-500 text-indigo-600 font-semibold{{else}}border-transparent text-slate-400 hover:text-slate-700{{end}}">
+                liked
+            </a>
             {{end}}
         </div>
-
-        <!-- Active category label -->
-        {{if .CategoryID}}
-        <p style="font-family:var(--font-mono);font-size:0.75rem;color:var(--ink-3);margin-bottom:16px;">
-            // category &middot;
-            {{range .Categories}}{{if eq $.CategoryID .ID}}<strong style="color:var(--ink);">{{.Name}}</strong>{{end}}{{end}}
-            &nbsp;<a href="/" style="color:var(--ink-4);font-size:0.7rem;">&#x2715; clear</a>
-        </p>
         {{end}}
 
         <!-- Empty state -->
         {{if not .Posts}}
-        <div class="empty-state">
-            <p>No posts yet. Start the conversation.</p>
+        <div class="text-center py-16 border border-dashed border-slate-300 rounded-2xl bg-white">
+            <i class="bi bi-chat-square-text text-4xl text-slate-300 block mb-3"></i>
+            <p class="text-slate-400 text-sm mb-4">
+                {{if .Search}}No posts match &ldquo;{{.Search}}&rdquo;.
+                {{else}}No posts yet &mdash; start the conversation.{{end}}
+            </p>
             {{if .LoggedIn}}
-            <a href="/post/create" class="btn btn-primary btn-sm">start a thread &larr;</a>
-            {{else}}
-            <a href="/register" class="btn btn-primary btn-sm">join to post</a>
+            <a href="/post/create"
+               class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+                <i class="bi bi-plus-lg"></i> start a thread
+            </a>
+            {{else if not .Search}}
+            <a href="/register"
+               class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+                join to post
+            </a>
             {{end}}
         </div>
         {{end}}
 
         <!-- Post cards -->
         {{range .Posts}}
-        <div id="post-{{.ID}}" class="post-card">
+        <article id="post-{{.ID}}"
+                 class="post-card flex bg-white border border-slate-200 rounded-xl mb-3 overflow-hidden hover:shadow-md transition-shadow">
 
             <!-- Vote rail -->
-            <div class="vote-rail">
+            <div class="flex flex-col items-center py-3 px-2.5 bg-slate-50 border-r border-slate-200 min-w-[48px] flex-shrink-0 gap-0.5">
+
                 {{if $.LoggedIn}}
                 <form action="/like" method="POST">
                     <input type="hidden" name="target_type" value="post">
                     <input type="hidden" name="target_id"   value="{{.ID}}">
                     <input type="hidden" name="is_like"     value="1">
                     <input type="hidden" name="redirect"    value="/#post-{{.ID}}">
-                    <button type="submit" class="vote-btn-up {{if eq .UserVote 1}}voted{{end}}" title="upvote">
-                        <i class="bi bi-arrow-up-short"></i>
+                    <button type="submit"
+                            class="vote-press w-8 h-8 flex items-center justify-center rounded-lg transition-colors
+                                   {{if eq .UserVote 1}}bg-orange-100 text-orange-500{{else}}text-slate-400 hover:bg-slate-200 hover:text-orange-400{{end}}">
+                        <i class="bi bi-arrow-up-short text-xl leading-none"></i>
                     </button>
                 </form>
                 {{else}}
-                <a href="/login" class="vote-btn-up" title="login to vote">
-                    <i class="bi bi-arrow-up-short"></i>
+                <a href="/login"
+                   class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-300 hover:text-slate-400 transition-colors">
+                    <i class="bi bi-arrow-up-short text-xl leading-none"></i>
                 </a>
                 {{end}}
 
-                <span class="vote-score">{{.LikeCount}}</span>
+                <span class="font-mono text-xs font-semibold text-slate-600 leading-none py-0.5">
+                    {{.LikeCount}}
+                </span>
 
                 {{if $.LoggedIn}}
                 <form action="/like" method="POST">
@@ -70,65 +115,85 @@
                     <input type="hidden" name="target_id"   value="{{.ID}}">
                     <input type="hidden" name="is_like"     value="0">
                     <input type="hidden" name="redirect"    value="/#post-{{.ID}}">
-                    <button type="submit" class="vote-btn-down {{if eq .UserVote -1}}voted{{end}}" title="downvote">
-                        <i class="bi bi-arrow-down-short"></i>
+                    <button type="submit"
+                            class="vote-press w-8 h-8 flex items-center justify-center rounded-lg transition-colors
+                                   {{if eq .UserVote -1}}bg-blue-100 text-blue-500{{else}}text-slate-400 hover:bg-slate-200 hover:text-blue-400{{end}}">
+                        <i class="bi bi-arrow-down-short text-xl leading-none"></i>
                     </button>
                 </form>
                 {{else}}
-                <a href="/login" class="vote-btn-down" title="login to vote">
-                    <i class="bi bi-arrow-down-short"></i>
+                <a href="/login"
+                   class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-300 hover:text-slate-400 transition-colors">
+                    <i class="bi bi-arrow-down-short text-xl leading-none"></i>
                 </a>
                 {{end}}
+
             </div>
 
             <!-- Post content -->
-            <div class="post-body-area">
+            <div class="flex flex-col flex-1 p-4 min-w-0">
 
+                <!-- Categories -->
                 {{if .Categories}}
-                <div class="post-cats">
+                <div class="flex flex-wrap gap-1.5 mb-2">
                     {{range .Categories}}
-                    <span class="cat-tag">{{.}}</span>
+                    <span class="inline-block font-mono text-[11px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                        {{.}}
+                    </span>
                     {{end}}
                 </div>
                 {{end}}
 
-                <a href="/post?id={{.ID}}" class="post-title-link">{{.Title}}</a>
+                <!-- Title -->
+                <a href="/post?id={{.ID}}"
+                   class="font-semibold text-slate-900 hover:text-indigo-600 transition-colors leading-snug text-[15px] tracking-tight mb-1.5 block">
+                    {{.Title}}
+                </a>
 
-                <div class="post-meta-row">
-                    <span class="post-author">@{{.Username}}</span>
-                </div>
+                <!-- Meta -->
+                <p class="font-mono text-xs text-slate-400 mb-2">@{{.Username}}</p>
 
+                <!-- Thumbnail -->
                 {{if .ImagePath}}
-                <img src="{{.ImagePath}}" alt="Post image" class="post-card-image">
+                <img src="{{.ImagePath}}" alt="" class="w-full max-h-44 object-cover rounded-lg mb-3 border border-slate-100">
                 {{end}}
 
-                <p class="post-excerpt">
+                <!-- Excerpt -->
+                <p class="text-sm text-slate-500 leading-relaxed flex-1 mb-3">
                     {{if gt (len .Content) 200}}{{slice .Content 0 200}}&hellip;{{else}}{{.Content}}{{end}}
                 </p>
 
-                <a href="/post?id={{.ID}}" class="post-read-link">read more &rarr;</a>
+                <!-- Read more -->
+                <a href="/post?id={{.ID}}"
+                   class="self-start font-mono text-xs text-slate-400 hover:text-indigo-500 transition-colors">
+                    read more &rarr;
+                </a>
 
             </div>
-        </div>
+        </article>
         {{end}}
 
     </div>
 
-    <!-- ── Category Rail (sidebar) ── -->
-    <aside class="category-rail">
+    <!-- ══ CATEGORY RAIL ══ -->
+    <aside class="hidden lg:block sticky top-20">
 
-        <div class="rail-section">
-            <p class="rail-heading">browse</p>
-            <ul class="rail-links">
+        <div class="bg-white border border-dashed border-slate-300 rounded-xl p-4 mb-3">
+            <p class="font-mono text-[10px] uppercase tracking-widest text-slate-400 mb-3">browse</p>
+            <ul class="space-y-0.5">
                 <li>
-                    <a href="/" class="rail-link {{if and (not .CategoryID) (not .Filter)}}active{{end}}">
-                        <i class="bi bi-globe2"></i> all posts
+                    <a href="/"
+                       class="flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 transition-colors
+                              {{if and (not .CategoryID) (not .Filter)}}bg-indigo-50 text-indigo-600 font-medium{{else}}text-slate-600 hover:bg-slate-50 hover:text-slate-900{{end}}">
+                        <i class="bi bi-globe2 text-xs"></i> all posts
                     </a>
                 </li>
                 {{range .Categories}}
                 <li>
-                    <a href="?category_id={{.ID}}" class="rail-link {{if eq $.CategoryID .ID}}active{{end}}">
-                        <i class="bi bi-hash"></i> {{.Name}}
+                    <a href="?category_id={{.ID}}"
+                       class="flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 transition-colors
+                              {{if eq $.CategoryID .ID}}bg-indigo-50 text-indigo-600 font-medium{{else}}text-slate-600 hover:bg-slate-50 hover:text-slate-900{{end}}">
+                        <i class="bi bi-hash text-xs"></i> {{.Name}}
                     </a>
                 </li>
                 {{end}}
@@ -136,26 +201,32 @@
         </div>
 
         {{if .LoggedIn}}
-        <div class="rail-section">
-            <p class="rail-heading">my feed</p>
-            <ul class="rail-links">
+        <div class="bg-white border border-dashed border-slate-300 rounded-xl p-4 mb-3">
+            <p class="font-mono text-[10px] uppercase tracking-widest text-slate-400 mb-3">my feed</p>
+            <ul class="space-y-0.5">
                 <li>
-                    <a href="/?filter=created" class="rail-link {{if eq .Filter "created"}}active{{end}}">
-                        <i class="bi bi-pencil"></i> my posts
+                    <a href="/?filter=created"
+                       class="flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 transition-colors
+                              {{if eq .Filter "created"}}bg-indigo-50 text-indigo-600 font-medium{{else}}text-slate-600 hover:bg-slate-50 hover:text-slate-900{{end}}">
+                        <i class="bi bi-pencil text-xs"></i> my posts
                     </a>
                 </li>
                 <li>
-                    <a href="/?filter=liked" class="rail-link {{if eq .Filter "liked"}}active{{end}}">
-                        <i class="bi bi-heart"></i> liked posts
+                    <a href="/?filter=liked"
+                       class="flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 transition-colors
+                              {{if eq .Filter "liked"}}bg-indigo-50 text-indigo-600 font-medium{{else}}text-slate-600 hover:bg-slate-50 hover:text-slate-900{{end}}">
+                        <i class="bi bi-heart text-xs"></i> liked posts
                     </a>
                 </li>
             </ul>
         </div>
         {{end}}
 
-        <div class="rail-section">
-            <p class="rail-heading">house rules</p>
-            <p class="rail-info">Be kind. Stay on topic. No spam or self-promotion. Have fun.</p>
+        <div class="bg-white border border-dashed border-slate-300 rounded-xl p-4">
+            <p class="font-mono text-[10px] uppercase tracking-widest text-slate-400 mb-2">house rules</p>
+            <p class="text-xs text-slate-500 leading-relaxed">
+                Be respectful. Stay on topic. No spam or self-promotion. Good faith only.
+            </p>
         </div>
 
     </aside>
@@ -164,7 +235,7 @@
 
 <script>
     (function() {
-        var months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         var d = new Date();
         var el = document.getElementById('feed-date');
         if (el) el.textContent = months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();

@@ -63,6 +63,14 @@ type Like struct {
 	CreatedAt time.Time
 }
 
+// Stats holds aggregate counts for the admin dashboard.
+type Stats struct {
+	UserCount    int
+	PostCount    int
+	CommentCount int
+	VoteCount    int
+}
+
 type Template struct {
 	Posts      []Post
 	Post       Post
@@ -76,6 +84,8 @@ type Template struct {
 	CategoryID int64
 	Users      []User
 	Role       string
+	Search     string
+	Stats      Stats
 	// FormEmail and FormUsername let us put the user's typed text
 	// back into the form when there is a validation error,
 	// so the user does not have to type everything again.

@@ -730,6 +730,40 @@ func DeleteAnyComment(db *sql.DB, commentID int64) error {
 	return nil
 }
 
+// SearchPosts returns posts whose title or content matches the query string.
+func SearchPosts(db *sql.DB, query string, userID int64) ([]models.Post, error) {
+	term := "%" + query + "%"
+	rows, err := db.Query(`
+		SELECT
+			p.id, p.user_id, u.username, p.title, p.content,
+			p.image_path, p.created_at,
+			COUNT(CASE WHEN l.is_like = 1 THEN 1 END) AS like_count,
+			COUNT(CASE WHEN l.is_like = 0 THEN 1 END) AS dislike_count
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		LEFT JOIN likes l ON p.id = l.post_id
+		WHERE (p.title LIKE ? OR p.content LIKE ?)
+		GROUP BY p.id
+		ORDER BY p.created_at DESC`,
+		term, term,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search posts: %w", err)
+	}
+	defer rows.Close()
+	return scanPosts(db, rows, userID)
+}
+
+// GetStats returns aggregate counts for the admin dashboard.
+func GetStats(db *sql.DB) models.Stats {
+	var s models.Stats
+	db.QueryRow("SELECT COUNT(*) FROM users").Scan(&s.UserCount)
+	db.QueryRow("SELECT COUNT(*) FROM posts").Scan(&s.PostCount)
+	db.QueryRow("SELECT COUNT(*) FROM comments").Scan(&s.CommentCount)
+	db.QueryRow("SELECT COUNT(*) FROM likes").Scan(&s.VoteCount)
+	return s
+}
+
 // GetAllUsers returns all users — for the admin panel.
 func GetAllUsers(db *sql.DB) ([]models.User, error) {
 	rows, err := db.Query(

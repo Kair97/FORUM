@@ -66,7 +66,7 @@ func DeleteAnyCommentPOST(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// AdminPanelGET shows the admin panel with all users.
+// AdminPanelGET shows the admin panel with all users and site stats.
 func AdminPanelGET(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		users, err := database.GetAllUsers(db)
@@ -75,12 +75,15 @@ func AdminPanelGET(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		stats := database.GetStats(db)
 		userID, _ := utils.GetUserID(r)
 		utils.RenderTemplate(w, "web/templates/admin.html", models.Template{
 			Users:    users,
 			LoggedIn: true,
 			Role:     "admin",
+			UserID:   userID,
 			Username: getUsernameByID(db, userID),
+			Stats:    stats,
 		})
 	}
 }

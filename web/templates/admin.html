@@ -1,51 +1,96 @@
 {{define "content"}}
 
-<div class="page-header">
-    <p class="page-mono-label">// admin panel</p>
-    <h1 class="page-title">User Management</h1>
-    <p class="page-subtitle">Manage user roles. You cannot change your own role.</p>
+<!-- Header -->
+<div class="mb-8">
+    <p class="font-mono text-xs text-slate-400 mb-1">// admin panel</p>
+    <h1 class="font-display text-2xl font-bold tracking-tight text-slate-900">User Management</h1>
+    <p class="text-sm text-slate-500 mt-1">Manage roles. You cannot change your own role.</p>
 </div>
 
-<div class="table-card">
-    <div class="table-responsive">
-        <table class="data-table">
+<!-- Stats grid -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+
+    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <p class="font-mono text-[11px] text-slate-400 mb-2 uppercase tracking-wider">users</p>
+        <p class="font-display text-3xl font-bold text-slate-900">{{.Stats.UserCount}}</p>
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <p class="font-mono text-[11px] text-slate-400 mb-2 uppercase tracking-wider">posts</p>
+        <p class="font-display text-3xl font-bold text-indigo-600">{{.Stats.PostCount}}</p>
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <p class="font-mono text-[11px] text-slate-400 mb-2 uppercase tracking-wider">replies</p>
+        <p class="font-display text-3xl font-bold text-slate-900">{{.Stats.CommentCount}}</p>
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <p class="font-mono text-[11px] text-slate-400 mb-2 uppercase tracking-wider">votes</p>
+        <p class="font-display text-3xl font-bold text-slate-900">{{.Stats.VoteCount}}</p>
+    </div>
+
+</div>
+
+<!-- Users table -->
+<div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
             <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Action</th>
+                <tr class="bg-slate-50 border-b border-slate-200">
+                    <th class="font-mono text-[11px] uppercase tracking-wider text-slate-400 text-left px-5 py-3 font-normal">id</th>
+                    <th class="font-mono text-[11px] uppercase tracking-wider text-slate-400 text-left px-5 py-3 font-normal">username</th>
+                    <th class="font-mono text-[11px] uppercase tracking-wider text-slate-400 text-left px-5 py-3 font-normal">email</th>
+                    <th class="font-mono text-[11px] uppercase tracking-wider text-slate-400 text-left px-5 py-3 font-normal">role</th>
+                    <th class="font-mono text-[11px] uppercase tracking-wider text-slate-400 text-left px-5 py-3 font-normal">action</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody class="divide-y divide-slate-100">
                 {{range .Users}}
-                <tr>
-                    <td class="mono">{{.ID}}</td>
-                    <td>
-                        <span class="mono">@{{.Username}}</span>
+                <tr class="hover:bg-slate-50 transition-colors">
+
+                    <td class="px-5 py-3.5 font-mono text-xs text-slate-400">{{.ID}}</td>
+
+                    <td class="px-5 py-3.5">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-7 h-7 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                                <span class="font-bold text-indigo-500 text-[11px] uppercase">{{slice .Username 0 1}}</span>
+                            </div>
+                            <span class="font-mono text-xs font-medium text-slate-700">@{{.Username}}</span>
+                        </div>
                     </td>
-                    <td style="color:var(--ink-3);">{{.Email}}</td>
-                    <td>
-                        <span class="role-badge role-{{.Role}}">{{.Role}}</span>
+
+                    <td class="px-5 py-3.5 text-slate-500 text-xs">{{.Email}}</td>
+
+                    <td class="px-5 py-3.5">
+                        <span class="font-mono text-[11px] font-semibold px-2.5 py-0.5 rounded-full
+                            {{if eq .Role "admin"}}bg-rose-50 text-rose-600
+                            {{else if eq .Role "moderator"}}bg-amber-50 text-amber-600
+                            {{else}}bg-slate-100 text-slate-500{{end}}">
+                            {{.Role}}
+                        </span>
                     </td>
-                    <td>
+
+                    <td class="px-5 py-3.5">
                         {{if ne .ID $.UserID}}
-                        <form action="/admin/set-role" method="POST" class="inline-form">
+                        <form action="/admin/set-role" method="POST" class="flex items-center gap-2">
                             <input type="hidden" name="user_id" value="{{.ID}}">
-                            <select name="role" class="inline-select">
+                            <select name="role"
+                                    class="font-mono text-xs text-slate-700 bg-white border border-slate-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer">
                                 <option value="user"      {{if eq .Role "user"}}selected{{end}}>user</option>
                                 <option value="moderator" {{if eq .Role "moderator"}}selected{{end}}>moderator</option>
                                 <option value="admin"     {{if eq .Role "admin"}}selected{{end}}>admin</option>
                             </select>
-                            <button type="submit" class="btn btn-primary btn-sm">save</button>
+                            <button type="submit"
+                                    class="font-mono text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition-colors">
+                                save
+                            </button>
                         </form>
                         {{else}}
-                        <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--ink-4);">
-                            (you)
-                        </span>
+                        <span class="font-mono text-xs text-slate-300">(you)</span>
                         {{end}}
                     </td>
+
                 </tr>
                 {{end}}
             </tbody>

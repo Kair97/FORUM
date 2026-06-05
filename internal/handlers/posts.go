@@ -41,6 +41,7 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 		// Read the filter parameters from the URL
 		categoryIDStr := r.URL.Query().Get("category_id")
 		filter := r.URL.Query().Get("filter")
+		search := r.URL.Query().Get("search")
 
 		// Read login status — needed for auth-only filters.
 		userID, loggedIn := utils.GetUserID(r)
@@ -56,6 +57,12 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 		var categoryID int64
 
 		switch {
+		case search != "":
+			posts, err = database.SearchPosts(db, search, userID)
+			if err != nil {
+				utils.RenderError(w, http.StatusInternalServerError)
+				return
+			}
 		case categoryIDStr != "":
 			// Filter by category - available to all users.
 			categoryID, err = strconv.ParseInt(categoryIDStr, 10, 64)
@@ -116,6 +123,7 @@ func IndexGET(db *sql.DB) http.HandlerFunc {
 			Username:   username,
 			Filter:     filter,
 			CategoryID: categoryID,
+			Search:     search,
 			Role:       utils.GetRole(r),
 		})
 

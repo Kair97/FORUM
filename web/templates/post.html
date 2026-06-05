@@ -1,41 +1,49 @@
 {{define "content"}}
-<div class="post-detail-wrap">
+<div class="max-w-2xl">
 
-    <!-- Back link -->
-    <a href="/" class="back-link">
+    <!-- Back -->
+    <a href="/" class="inline-flex items-center gap-1.5 font-mono text-xs text-slate-400 hover:text-slate-700 transition-colors mb-7">
         <i class="bi bi-arrow-left"></i> back to feed
     </a>
 
-    <!-- ── Article ── -->
-    <article>
+    <!-- ══ ARTICLE ══ -->
+    <article class="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 mb-6 shadow-sm">
 
         <!-- Category tags -->
         {{if .Post.Categories}}
-        <div class="article-cats">
+        <div class="flex flex-wrap gap-1.5 mb-4">
             {{range .Post.Categories}}
-            <span class="cat-tag">{{.}}</span>
+            <span class="font-mono text-[11px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 rounded-full">
+                {{.}}
+            </span>
             {{end}}
         </div>
         {{end}}
 
         <!-- Title -->
-        <h1 class="article-title">{{.Post.Title}}</h1>
+        <h1 class="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight mb-4">
+            {{.Post.Title}}
+        </h1>
 
-        <!-- Meta: author -->
-        <div class="article-meta">
-            <span><i class="bi bi-person"></i> @{{.Post.Username}}</span>
+        <!-- Author -->
+        <div class="flex items-center gap-2 pb-5 mb-5 border-b border-slate-100">
+            <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                <span class="font-semibold text-indigo-600 text-xs uppercase">{{slice .Post.Username 0 1}}</span>
+            </div>
+            <span class="font-mono text-xs text-slate-500">@{{.Post.Username}}</span>
         </div>
 
         <!-- Featured image -->
         {{if .Post.ImagePath}}
-        <img src="{{.Post.ImagePath}}" alt="Post image" class="article-image">
+        <img src="{{.Post.ImagePath}}" alt="Post image"
+             class="w-full max-h-96 object-cover rounded-xl mb-6 border border-slate-100">
         {{end}}
 
         <!-- Body -->
-        <div class="article-body">{{.Post.Content}}</div>
+        <div class="text-slate-700 text-[15px] leading-relaxed whitespace-pre-wrap mb-6">{{.Post.Content}}</div>
 
         <!-- Vote row -->
-        <div class="article-votes">
+        <div class="flex items-center gap-3 pt-5 border-t border-slate-100 flex-wrap">
 
             {{if .LoggedIn}}
             <form action="/like" method="POST" style="display:inline;">
@@ -43,8 +51,10 @@
                 <input type="hidden" name="target_id"   value="{{.Post.ID}}">
                 <input type="hidden" name="is_like"     value="1">
                 <input type="hidden" name="redirect"    value="/post?id={{.Post.ID}}">
-                <button type="submit" class="vote-pill-btn up {{if eq .Post.UserVote 1}}voted{{end}}">
-                    <i class="bi bi-arrow-up-short"></i> {{.Post.LikeCount}}
+                <button type="submit"
+                        class="vote-press inline-flex items-center gap-2 font-mono text-sm px-4 py-2 rounded-full border transition-all
+                               {{if eq .Post.UserVote 1}}bg-orange-50 border-orange-300 text-orange-500{{else}}bg-slate-50 border-slate-300 text-slate-500 hover:border-orange-300 hover:text-orange-400{{end}}">
+                    <i class="bi bi-arrow-up-short text-base leading-none"></i> {{.Post.LikeCount}}
                 </button>
             </form>
             <form action="/like" method="POST" style="display:inline;">
@@ -52,77 +62,90 @@
                 <input type="hidden" name="target_id"   value="{{.Post.ID}}">
                 <input type="hidden" name="is_like"     value="0">
                 <input type="hidden" name="redirect"    value="/post?id={{.Post.ID}}">
-                <button type="submit" class="vote-pill-btn down {{if eq .Post.UserVote -1}}voted{{end}}">
-                    <i class="bi bi-arrow-down-short"></i> {{.Post.DislikeCount}}
+                <button type="submit"
+                        class="vote-press inline-flex items-center gap-2 font-mono text-sm px-4 py-2 rounded-full border transition-all
+                               {{if eq .Post.UserVote -1}}bg-blue-50 border-blue-300 text-blue-500{{else}}bg-slate-50 border-slate-300 text-slate-500 hover:border-blue-300 hover:text-blue-400{{end}}">
+                    <i class="bi bi-arrow-down-short text-base leading-none"></i> {{.Post.DislikeCount}}
                 </button>
             </form>
             {{else}}
-            <a href="/login" class="vote-pill-btn up" title="Login to vote">
-                <i class="bi bi-arrow-up-short"></i> {{.Post.LikeCount}}
+            <a href="/login"
+               class="inline-flex items-center gap-2 font-mono text-sm px-4 py-2 rounded-full border bg-slate-50 border-slate-300 text-slate-400 hover:border-orange-300 hover:text-orange-400 transition-all">
+                <i class="bi bi-arrow-up-short text-base"></i> {{.Post.LikeCount}}
             </a>
-            <a href="/login" class="vote-pill-btn down" title="Login to vote">
-                <i class="bi bi-arrow-down-short"></i> {{.Post.DislikeCount}}
+            <a href="/login"
+               class="inline-flex items-center gap-2 font-mono text-sm px-4 py-2 rounded-full border bg-slate-50 border-slate-300 text-slate-400 hover:border-blue-300 hover:text-blue-400 transition-all">
+                <i class="bi bi-arrow-down-short text-base"></i> {{.Post.DislikeCount}}
             </a>
             {{end}}
 
             {{if or (eq $.Role "moderator") (eq $.Role "admin")}}
-            <div class="vote-delete-area">
-                <form action="/mod/delete-post" method="POST" style="display:inline;">
-                    <input type="hidden" name="post_id" value="{{.Post.ID}}">
-                    <button type="submit" class="btn btn-danger btn-sm"
-                            onclick="return confirm('Delete this post? This cannot be undone.')">
-                        <i class="bi bi-trash"></i> delete post
-                    </button>
-                </form>
-            </div>
+            <form action="/mod/delete-post" method="POST" class="ml-auto">
+                <input type="hidden" name="post_id" value="{{.Post.ID}}">
+                <button type="submit"
+                        onclick="return confirm('Delete this post? This cannot be undone.')"
+                        class="inline-flex items-center gap-1.5 font-mono text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg transition-colors">
+                    <i class="bi bi-trash"></i> delete post
+                </button>
+            </form>
             {{end}}
 
         </div>
-
     </article>
 
-    <!-- ── Comments ── -->
-    <section class="comments-section">
+    <!-- ══ COMMENTS ══ -->
+    <section>
 
-        <div class="comments-heading">
-            <i class="bi bi-chat-left-text"></i>
-            // replies
-            <span class="comment-count-badge">{{len .Comments}}</span>
+        <div class="flex items-center gap-2 mb-5">
+            <h2 class="font-mono text-sm font-semibold text-slate-600">// replies</h2>
+            <span class="font-mono text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{{len .Comments}}</span>
         </div>
 
-        <!-- Comment form (logged in) -->
+        <!-- Comment form -->
         {{if .LoggedIn}}
-        <div class="comment-form-area">
-            <span class="comment-form-label">replying as @{{.Username}}</span>
-            <form action="/comment/create" method="POST" class="comment-form">
+        <div class="bg-white border border-slate-200 rounded-xl p-4 mb-6 shadow-sm">
+            <p class="font-mono text-[11px] text-slate-400 mb-3">replying as @{{.Username}}</p>
+            <form action="/comment/create" method="POST">
                 <input type="hidden" name="post_id" value="{{.Post.ID}}">
-                <textarea name="content" placeholder="Write a reply..." required></textarea>
-                <div class="comment-form-footer">
-                    <button type="submit" class="btn btn-primary btn-sm">
-                        <i class="bi bi-send"></i> post reply
+                <textarea name="content"
+                          placeholder="Share your thoughts..."
+                          rows="3"
+                          required
+                          class="w-full text-sm text-slate-700 placeholder-slate-300 bg-transparent border-none outline-none resize-y min-h-[72px]"></textarea>
+                <div class="flex justify-end pt-3 border-t border-slate-100 mt-2">
+                    <button type="submit"
+                            class="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors">
+                        <i class="bi bi-send text-xs"></i> post reply
                     </button>
                 </div>
             </form>
         </div>
         {{else}}
-        <div class="login-prompt">
-            <a href="/login">Login</a> or <a href="/register">register</a> to join the conversation.
+        <div class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-6 text-sm text-slate-500">
+            <a href="/login" class="text-indigo-600 hover:underline">Login</a> or
+            <a href="/register" class="text-indigo-600 hover:underline">register</a> to join the conversation.
         </div>
         {{end}}
 
-        <!-- No comments state -->
+        <!-- No comments -->
         {{if not .Comments}}
-        <div class="no-comments">// no replies yet &mdash; be the first</div>
+        <p class="font-mono text-xs text-slate-400 text-center py-8">// no replies yet &mdash; be the first</p>
         {{end}}
 
         <!-- Comment list -->
         {{range .Comments}}
-        <div class="comment-item">
+        <div class="py-4 border-b border-slate-100 first:border-t first:border-slate-100">
 
-            <div class="comment-author">@{{.Username}}</div>
-            <p class="comment-text">{{.Content}}</p>
+            <div class="flex items-center gap-2 mb-2">
+                <div class="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                    <span class="font-semibold text-slate-500 text-[10px] uppercase">{{slice .Username 0 1}}</span>
+                </div>
+                <span class="font-mono text-xs text-slate-500">@{{.Username}}</span>
+            </div>
 
-            <div class="comment-actions">
+            <p class="text-sm text-slate-700 leading-relaxed mb-3 pl-8">{{.Content}}</p>
+
+            <div class="flex items-center gap-2 pl-8">
 
                 {{if $.LoggedIn}}
                 <form action="/like" method="POST" style="display:inline;">
@@ -130,8 +153,10 @@
                     <input type="hidden" name="target_id"   value="{{.ID}}">
                     <input type="hidden" name="is_like"     value="1">
                     <input type="hidden" name="redirect"    value="/post?id={{$.Post.ID}}">
-                    <button type="submit" class="comment-vote-btn up {{if eq .UserVote 1}}voted{{end}}">
-                        <i class="bi bi-arrow-up-short"></i> {{.LikeCount}}
+                    <button type="submit"
+                            class="vote-press inline-flex items-center gap-1 font-mono text-xs px-2 py-1 rounded-md transition-colors
+                                   {{if eq .UserVote 1}}text-orange-500 bg-orange-50{{else}}text-slate-400 hover:bg-slate-100 hover:text-orange-400{{end}}">
+                        <i class="bi bi-arrow-up-short text-sm leading-none"></i> {{.LikeCount}}
                     </button>
                 </form>
                 <form action="/like" method="POST" style="display:inline;">
@@ -139,13 +164,19 @@
                     <input type="hidden" name="target_id"   value="{{.ID}}">
                     <input type="hidden" name="is_like"     value="0">
                     <input type="hidden" name="redirect"    value="/post?id={{$.Post.ID}}">
-                    <button type="submit" class="comment-vote-btn down {{if eq .UserVote -1}}voted{{end}}">
-                        <i class="bi bi-arrow-down-short"></i> {{.DislikeCount}}
+                    <button type="submit"
+                            class="vote-press inline-flex items-center gap-1 font-mono text-xs px-2 py-1 rounded-md transition-colors
+                                   {{if eq .UserVote -1}}text-blue-500 bg-blue-50{{else}}text-slate-400 hover:bg-slate-100 hover:text-blue-400{{end}}">
+                        <i class="bi bi-arrow-down-short text-sm leading-none"></i> {{.DislikeCount}}
                     </button>
                 </form>
                 {{else}}
-                <a href="/login" class="comment-vote-btn up"><i class="bi bi-arrow-up-short"></i> {{.LikeCount}}</a>
-                <a href="/login" class="comment-vote-btn down"><i class="bi bi-arrow-down-short"></i> {{.DislikeCount}}</a>
+                <a href="/login" class="inline-flex items-center gap-1 font-mono text-xs text-slate-300 px-2 py-1 rounded-md">
+                    <i class="bi bi-arrow-up-short text-sm"></i> {{.LikeCount}}
+                </a>
+                <a href="/login" class="inline-flex items-center gap-1 font-mono text-xs text-slate-300 px-2 py-1 rounded-md">
+                    <i class="bi bi-arrow-down-short text-sm"></i> {{.DislikeCount}}
+                </a>
                 {{end}}
 
                 {{if or (and $.LoggedIn (eq $.UserID .UserID)) (eq $.Role "moderator") (eq $.Role "admin")}}
@@ -153,8 +184,9 @@
                       method="POST" style="display:inline;margin-left:auto;">
                     <input type="hidden" name="comment_id" value="{{.ID}}">
                     <input type="hidden" name="post_id"    value="{{$.Post.ID}}">
-                    <button type="submit" class="comment-delete-btn"
-                            onclick="return confirm('Delete this reply?')">
+                    <button type="submit"
+                            onclick="return confirm('Delete this reply?')"
+                            class="font-mono text-xs text-slate-300 hover:text-rose-500 px-2 py-1 rounded-md transition-colors">
                         <i class="bi bi-trash"></i>
                     </button>
                 </form>

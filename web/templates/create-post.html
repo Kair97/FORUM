@@ -1,83 +1,140 @@
 {{define "content"}}
-<div class="compose-wrap">
+<div class="max-w-2xl mx-auto"
+     x-data="{
+        titleLen:   0,
+        bodyLen:    0,
+        titleMax:   200,
+        bodyMax:    10000,
+        preview:    null,
+        filename:   'no file chosen',
+        setFile(el) {
+            if (el.files[0]) {
+                this.preview  = URL.createObjectURL(el.files[0]);
+                this.filename = el.files[0].name;
+            } else {
+                this.preview  = null;
+                this.filename = 'no file chosen';
+            }
+        },
+        clearFile() {
+            this.preview  = null;
+            this.filename = 'no file chosen';
+            this.$refs.fileInput.value = '';
+        }
+     }">
 
-    <p class="compose-mono-label">// compose</p>
-    <h1 class="compose-title">Start a thread.</h1>
+    <div class="mb-8">
+        <p class="font-mono text-xs text-slate-400 mb-1">// compose</p>
+        <h1 class="font-display text-2xl font-bold tracking-tight text-slate-900">Start a thread.</h1>
+    </div>
 
     {{if .Error}}
-    <div class="form-error">
-        <i class="bi bi-exclamation-circle"></i> {{.Error}}
+    <div class="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl px-4 py-3 mb-6 text-sm">
+        <i class="bi bi-exclamation-circle-fill flex-shrink-0"></i>
+        <span>{{.Error}}</span>
     </div>
     {{end}}
 
-    <div class="compose-card">
+    <div class="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
         <form action="/post/create" method="POST" enctype="multipart/form-data">
 
-            <div class="form-group">
-                <label for="title" class="form-label">Title</label>
+            <!-- Title -->
+            <div class="mb-6">
+                <div class="flex items-baseline justify-between mb-1.5">
+                    <label for="title" class="font-mono text-xs uppercase tracking-wider text-slate-400">Title</label>
+                    <span class="font-mono text-xs"
+                          :class="titleLen > titleMax ? 'text-red-500' : titleLen > titleMax * 0.85 ? 'text-amber-500' : 'text-slate-300'"
+                          x-text="titleMax - titleLen">200</span>
+                </div>
                 <input type="text" id="title" name="title"
-                       class="form-input"
+                       x-model="titleLen" @input="titleLen = $el.value.length"
+                       class="w-full text-base font-semibold text-slate-900 bg-transparent border-b-2 border-slate-200 focus:border-indigo-500 focus:outline-none pb-2 transition-colors placeholder-slate-300"
                        placeholder="Give your post a clear title"
                        maxlength="200"
                        required>
             </div>
 
-            <div class="form-group">
-                <label for="content" class="form-label">Body</label>
+            <!-- Body -->
+            <div class="mb-6">
+                <div class="flex items-baseline justify-between mb-1.5">
+                    <label for="content" class="font-mono text-xs uppercase tracking-wider text-slate-400">Body</label>
+                    <span class="font-mono text-xs"
+                          :class="bodyLen > bodyMax ? 'text-red-500' : bodyLen > bodyMax * 0.85 ? 'text-amber-500' : 'text-slate-300'"
+                          x-text="bodyMax - bodyLen">10000</span>
+                </div>
                 <textarea id="content" name="content"
-                          class="form-textarea"
-                          placeholder="Write your post here..."
+                          x-model="bodyLen" @input="bodyLen = $el.value.length"
                           rows="8"
-                          required></textarea>
+                          maxlength="10000"
+                          required
+                          placeholder="What's on your mind..."
+                          class="w-full text-sm text-slate-700 placeholder-slate-300 bg-transparent border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all resize-y"></textarea>
             </div>
 
-            <div class="form-group">
-                <label class="form-label">
-                    Categories
-                    <span class="form-label-hint">(select at least one)</span>
-                </label>
-                <div class="cat-pills">
+            <!-- Categories -->
+            <div class="mb-6">
+                <p class="font-mono text-xs uppercase tracking-wider text-slate-400 mb-3">
+                    Categories <span class="normal-case tracking-normal text-slate-300">(pick at least one)</span>
+                </p>
+                <div class="flex flex-wrap gap-2">
                     {{range .Categories}}
-                    <div class="cat-pill">
-                        <input type="checkbox" name="category_ids" value="{{.ID}}" id="cat-{{.ID}}">
-                        <label for="cat-{{.ID}}">{{.Name}}</label>
-                    </div>
+                    <label class="relative cursor-pointer">
+                        <input type="checkbox" name="category_ids" value="{{.ID}}" class="sr-only peer">
+                        <span class="inline-block font-mono text-xs px-3 py-1.5 rounded-full border border-slate-300 text-slate-500
+                                     peer-checked:bg-indigo-600 peer-checked:border-indigo-600 peer-checked:text-white
+                                     hover:border-indigo-400 hover:text-indigo-500 transition-all select-none">
+                            {{.Name}}
+                        </span>
+                    </label>
                     {{end}}
                 </div>
             </div>
 
-            <div class="form-group">
-                <label class="form-label">
-                    Image
-                    <span class="form-label-hint">(optional &mdash; JPEG, PNG, GIF, WebP &mdash; max 10 MB)</span>
-                </label>
-                <div class="file-input-row">
+            <!-- Image upload -->
+            <div class="mb-8">
+                <p class="font-mono text-xs uppercase tracking-wider text-slate-400 mb-3">
+                    Image <span class="normal-case tracking-normal text-slate-300">(optional &mdash; max 10 MB)</span>
+                </p>
+
+                <div class="flex items-center gap-3">
                     <input type="file" id="image" name="image"
+                           x-ref="fileInput"
                            accept="image/jpeg,image/png,image/gif,image/webp"
-                           class="file-input-hidden">
-                    <label for="image" class="file-input-label">
-                        <i class="bi bi-paperclip"></i> choose image
+                           @change="setFile($el)"
+                           class="sr-only">
+                    <label for="image"
+                           class="inline-flex items-center gap-2 font-mono text-xs text-slate-600
+                                  bg-slate-100 hover:bg-slate-200 border border-slate-300 px-3 py-2 rounded-lg cursor-pointer transition-colors">
+                        <i class="bi bi-paperclip"></i> choose file
                     </label>
-                    <span class="file-name" id="file-name">no file chosen</span>
+                    <span class="font-mono text-xs text-slate-400 truncate max-w-[200px]" x-text="filename"></span>
+                    <button type="button" x-show="preview" @click="clearFile()"
+                            class="font-mono text-xs text-rose-400 hover:text-rose-600 transition-colors ml-auto">
+                        remove
+                    </button>
                 </div>
+
+                <!-- Image preview -->
+                <template x-if="preview">
+                    <div class="mt-4">
+                        <img :src="preview" alt="Preview" class="img-preview max-h-56 rounded-xl border border-slate-200 object-cover">
+                    </div>
+                </template>
             </div>
 
-            <div style="display:flex;gap:10px;margin-top:8px;">
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-send"></i> publish post
+            <div class="flex items-center gap-3">
+                <button type="submit"
+                        class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors">
+                    <i class="bi bi-send text-sm"></i> publish post
                 </button>
-                <a href="/" class="btn btn-ghost">cancel</a>
+                <a href="/"
+                   class="font-medium text-sm text-slate-500 hover:text-slate-700 px-4 py-2.5 rounded-xl hover:bg-slate-100 transition-colors">
+                    cancel
+                </a>
             </div>
 
         </form>
     </div>
 
 </div>
-
-<script>
-    document.getElementById('image').addEventListener('change', function() {
-        var name = this.files[0] ? this.files[0].name : 'no file chosen';
-        document.getElementById('file-name').textContent = name;
-    });
-</script>
 {{end}}

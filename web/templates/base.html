@@ -1,81 +1,150 @@
 {{define "base.html"}}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>forum vol. 01</title>
+    <title>Forum</title>
 
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-    <!-- Bootstrap Icons (icon fonts only — no CSS framework) -->
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans:    ['Inter', 'system-ui', 'sans-serif'],
+                        mono:    ['JetBrains Mono', 'ui-monospace', 'monospace'],
+                        display: ['Space Grotesk', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+
+    <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
 
+    <!-- Custom CSS (transitions, scrollbar, animations) -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
+<body class="font-sans bg-slate-50 text-slate-900 min-h-full flex flex-col antialiased">
 
-<!-- ── Site Header ── -->
-<header class="site-header">
-    <div class="header-inner">
+<!-- ══ HEADER ══ -->
+<header x-data="{ open: false }"
+        class="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-slate-200 shadow-sm">
 
-        <a href="/" class="brand">§ forum vol. 01</a>
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
 
-        <nav class="header-nav" id="header-nav">
-            <a href="/" class="nav-link">feed</a>
+        <!-- Brand -->
+        <a href="/" class="font-mono font-semibold text-sm text-slate-900 hover:text-indigo-600 transition-colors flex-shrink-0">
+            § Forum
+        </a>
+
+        <!-- Desktop nav -->
+        <nav class="hidden md:flex items-center gap-0.5 flex-shrink-0">
+            <a href="/" class="font-mono text-xs text-slate-500 hover:text-slate-900 hover:bg-slate-100 px-3 py-1.5 rounded-md transition-colors">feed</a>
             {{if .LoggedIn}}
-            <a href="/?filter=created" class="nav-link">my posts</a>
+            <a href="/?filter=created" class="font-mono text-xs text-slate-500 hover:text-slate-900 hover:bg-slate-100 px-3 py-1.5 rounded-md transition-colors">my posts</a>
             {{end}}
             {{if eq .Role "admin"}}
-            <a href="/admin" class="nav-link">admin</a>
+            <a href="/admin" class="font-mono text-xs text-slate-500 hover:text-slate-900 hover:bg-slate-100 px-3 py-1.5 rounded-md transition-colors">admin</a>
             {{end}}
         </nav>
 
-        <div class="header-actions">
+        <!-- Search bar (desktop) -->
+        <form action="/" method="GET" class="hidden md:flex flex-1 max-w-xs">
+            <div class="relative w-full">
+                <i class="bi bi-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none"></i>
+                <input type="text" name="search" value="{{.Search}}"
+                       placeholder="search posts..."
+                       class="w-full pl-8 pr-3 py-1.5 text-sm bg-slate-100 border border-transparent rounded-lg
+                              focus:outline-none focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all">
+            </div>
+        </form>
+
+        <!-- Right actions -->
+        <div class="flex items-center gap-2 ml-auto">
             {{if .LoggedIn}}
-            <span class="header-user">@{{.Username}}</span>
-            <a href="/post/create" class="btn btn-primary btn-sm">+ new post</a>
-            <form action="/logout" method="POST" style="display:inline;">
-                <button type="submit" class="btn btn-ghost btn-sm">logout</button>
+            <span class="hidden lg:block font-mono text-xs text-slate-400 max-w-[120px] truncate">@{{.Username}}</span>
+            <a href="/post/create"
+               class="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors">
+                <i class="bi bi-plus-lg text-xs"></i>
+                <span class="hidden sm:inline">new post</span>
+            </a>
+            <form action="/logout" method="POST">
+                <button type="submit"
+                        class="text-sm text-slate-500 hover:text-slate-900 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors font-medium">
+                    logout
+                </button>
             </form>
             {{else}}
-            <a href="/login"    class="btn btn-secondary btn-sm">login</a>
-            <a href="/register" class="btn btn-primary btn-sm">register</a>
+            <a href="/login"
+               class="text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors">
+                login
+            </a>
+            <a href="/register"
+               class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors">
+                register
+            </a>
             {{end}}
         </div>
 
-        <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu">
-            <i class="bi bi-list"></i>
+        <!-- Mobile hamburger -->
+        <button @click="open = !open"
+                class="md:hidden flex items-center justify-center w-8 h-8 rounded-md hover:bg-slate-100 text-slate-600 transition-colors">
+            <i :class="open ? 'bi-x-lg' : 'bi-list'" class="bi text-lg leading-none"></i>
         </button>
 
     </div>
+
+    <!-- Mobile dropdown -->
+    <div x-show="open"
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0 -translate-y-1"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-end="opacity-0 -translate-y-1"
+         x-cloak
+         class="md:hidden border-t border-slate-100 bg-white px-4 pb-4 pt-3 space-y-1">
+
+        <form action="/" method="GET" class="mb-3">
+            <input type="text" name="search" value="{{.Search}}" placeholder="search posts..."
+                   class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400">
+        </form>
+
+        <a href="/"                  class="block font-mono text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-2 py-2 rounded-md">feed</a>
+        {{if .LoggedIn}}
+        <a href="/?filter=created"   class="block font-mono text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-2 py-2 rounded-md">my posts</a>
+        <a href="/?filter=liked"     class="block font-mono text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-2 py-2 rounded-md">liked posts</a>
+        {{end}}
+        {{if eq .Role "admin"}}
+        <a href="/admin"             class="block font-mono text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-2 py-2 rounded-md">admin panel</a>
+        {{end}}
+    </div>
+
 </header>
 
-<!-- ── Page Content ── -->
-<main class="main-content">
-    <div class="container">
-        {{block "content" .}}{{end}}
-    </div>
+<!-- ══ MAIN ══ -->
+<main class="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-8">
+    {{block "content" .}}{{end}}
 </main>
 
-<!-- ── Footer ── -->
-<footer class="site-footer">
-    // forum vol. 01 &middot; built with go &amp; love
+<!-- ══ FOOTER ══ -->
+<footer class="border-t border-slate-200 bg-white mt-auto">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+        <span class="font-mono text-xs text-slate-400">§ forum &mdash; built with Go</span>
+        <span class="font-mono text-xs text-slate-300">v2.0</span>
+    </div>
 </footer>
-
-<script>
-    (function() {
-        var toggle = document.getElementById('menu-toggle');
-        var nav    = document.getElementById('header-nav');
-        if (toggle && nav) {
-            toggle.addEventListener('click', function() {
-                nav.classList.toggle('open');
-            });
-        }
-    })();
-</script>
 
 </body>
 </html>

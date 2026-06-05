@@ -1,7 +1,8 @@
 {{define "content"}}
-<div class="error-wrap">
+<div class="flex flex-col items-center justify-center min-h-[70vh] text-center px-4">
 
-    <div class="error-code">
+    <!-- Big error code -->
+    <div class="font-display font-bold text-[9rem] sm:text-[12rem] leading-none tracking-tighter text-slate-200 select-none mb-4">
         {{if eq .Error "404"}}404
         {{else if eq .Error "403"}}403
         {{else if eq .Error "405"}}405
@@ -10,7 +11,7 @@
         {{else}}err{{end}}
     </div>
 
-    <h1 class="error-title">
+    <h1 class="font-display text-xl font-bold text-slate-900 mb-2">
         {{if eq .Error "400"}}Bad Request
         {{else if eq .Error "403"}}Forbidden
         {{else if eq .Error "404"}}Page Not Found
@@ -19,16 +20,17 @@
         {{else}}Something Went Wrong{{end}}
     </h1>
 
-    <p class="error-msg">
-        {{if eq .Error "400"}}The request was invalid. Please check the URL or form data.
-        {{else if eq .Error "403"}}You don&rsquo;t have permission to access this page.
+    <p class="text-slate-500 text-sm max-w-sm mb-8 leading-relaxed">
+        {{if eq .Error "400"}}The request was invalid. Please check the form data or URL.
+        {{else if eq .Error "403"}}You don&rsquo;t have permission to view this page.
         {{else if eq .Error "404"}}The page you&rsquo;re looking for doesn&rsquo;t exist.
-        {{else if eq .Error "405"}}This page doesn&rsquo;t support that request method.
-        {{else if eq .Error "500"}}The server ran into a problem. Please try again later.
+        {{else if eq .Error "405"}}This page doesn&rsquo;t support that HTTP method.
+        {{else if eq .Error "500"}}Something broke on our end. Try again in a moment.
         {{else}}An unexpected error occurred. Please try again.{{end}}
     </p>
 
-    <a href="/" class="btn btn-primary">
+    <a href="/"
+       class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors">
         <i class="bi bi-house"></i> go home
     </a>
 

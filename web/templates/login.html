@@ -1,49 +1,61 @@
 {{define "content"}}
-<div class="auth-wrap">
-    <div class="auth-card">
+<div class="min-h-[80vh] flex items-center justify-center">
+<div class="w-full max-w-sm">
 
-        <div class="auth-mono-brand">§ forum vol. 01</div>
-        <div class="auth-mono-sub">// welcome back</div>
+    <!-- Brand -->
+    <div class="text-center mb-8">
+        <a href="/" class="font-mono font-semibold text-lg text-slate-900 hover:text-indigo-600 transition-colors">
+            § Forum
+        </a>
+        <p class="font-mono text-xs text-slate-400 mt-1">// welcome back</p>
+    </div>
 
-        <h2 class="auth-title">Sign in to your account</h2>
+    <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+
+        <h2 class="font-display text-xl font-bold text-slate-900 mb-6">Sign in</h2>
 
         {{if .Error}}
-        <div class="form-error">
-            <i class="bi bi-exclamation-circle"></i> {{.Error}}
+        <div class="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl px-4 py-3 mb-5 text-sm">
+            <i class="bi bi-exclamation-circle-fill flex-shrink-0"></i>
+            <span>{{.Error}}</span>
         </div>
         {{end}}
 
-        <form action="/login" method="POST">
+        <form action="/login" method="POST" class="space-y-5">
 
-            <div class="form-group">
-                <label for="email" class="form-label">Email</label>
+            <div>
+                <label for="email" class="block font-mono text-xs uppercase tracking-wider text-slate-400 mb-1.5">Email</label>
                 <input type="email" id="email" name="email"
-                       class="form-input"
-                       placeholder="your@email.com"
                        value="{{.FormEmail}}"
-                       required>
+                       placeholder="your@email.com"
+                       required
+                       class="w-full text-sm text-slate-900 border border-slate-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all placeholder-slate-300">
             </div>
 
-            <div class="form-group">
-                <label for="password" class="form-label">Password</label>
+            <div>
+                <label for="password" class="block font-mono text-xs uppercase tracking-wider text-slate-400 mb-1.5">Password</label>
                 <input type="password" id="password" name="password"
-                       class="form-input"
                        placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
-                       required>
+                       required
+                       class="w-full text-sm text-slate-900 border border-slate-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all placeholder-slate-300">
             </div>
 
-            <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
-                <i class="bi bi-box-arrow-in-right"></i> login
+            <button type="submit"
+                    class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold py-2.5 rounded-xl transition-colors">
+                <i class="bi bi-box-arrow-in-right"></i> sign in
             </button>
 
         </form>
 
-        <hr class="auth-divider">
-
-        <p class="auth-footer-text">
-            Don&rsquo;t have an account? <a href="/register">register</a>
-        </p>
+        <div class="mt-6 pt-5 border-t border-slate-100 text-center">
+            <p class="text-sm text-slate-500">
+                No account?
+                <a href="/register" class="text-indigo-600 font-medium hover:underline">Register here</a>
+            </p>
+        </div>
 
     </div>
+
+</div>
 </div>
 {{end}}
