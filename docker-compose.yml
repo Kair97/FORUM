@@ -1,11 +1,11 @@
-  version: '3.8'
+version: '3.8'
 
-  services: 
-    forum: 
-      build: .
-      ports: 
+services:
+  forum:
+    build: .
+    ports:
       - "8080:8080"
-      volumes: 
+    volumes:
       - ./database:/app/database
       - ./web/static/uploads:/app/web/static/uploads
-      restart: unless-stopped
+    restart: unless-stopped
