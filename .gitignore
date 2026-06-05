@@ -1,3 +1,4 @@
 .gocache
 internal/database/forum.db
 project-code-for-ai.txt
+.gitignore 
