@@ -100,6 +100,12 @@ The forum will be available at `http://localhost:8080`
 
 ### Run locally (requires Go 1.22+ and gcc)
 
+> **Mac users:** `go-sqlite3` requires a C compiler. Before running, install Xcode Command Line Tools:
+> ```bash
+> xcode-select --install
+> ```
+> You only need to do this once.
+
 ```bash
 git clone <your-repo-url>
 cd forum
@@ -255,6 +261,13 @@ Per project requirements, only these external packages are used:
 - `github.com/gofrs/uuid` — UUID session tokens
 
 All other functionality uses the Go standard library only.
+
+---
+
+## Authors
+
+- **Asylbek**
+- **Kairzhan**
 
 ---
 
