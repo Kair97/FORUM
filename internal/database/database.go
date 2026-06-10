@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"forum/internal/models"
 	"os"
+	"path/filepath"
 
 	// Blank import: we do not use this package directly in our code.
 	// But importing it runs its init() function, which registers the
@@ -17,9 +18,10 @@ import (
 // It returns a *sql.DB connection pool ready for use.
 // The caller (main.go) is responsible for closing it with db.Close().
 func Init(dbPath string, schemaPath string) (*sql.DB, error) {
-	// if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
-	// 	return nil, fmt.Errorf("failed to create database directory: %w", err)
-	// }
+	// Create the database directory if it does not exist yet.
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		return nil, fmt.Errorf("failed to create database directory: %w", err)
+	}
 
 	// sql.Open does not actually connect to the database yet.
 	// It just validates the arguments and prepares the connection pool.
@@ -29,13 +31,8 @@ func Init(dbPath string, schemaPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// db.Ping() forces an actual connection to the database.
-	// This is where we find out if the file path is valid and accessible.
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
-	}
-
-	// SQLite does not enforce foreign keys by default.
+	// SQLite is a file, not a network service — db.Ping() is not needed here.
+	// Foreign keys are disabled by default in SQLite.
 	// We must enable it explicitly on every new connection.
 	// Without this, ON DELETE CASCADE and FK constraints are silently ignored.
 	_, err = db.Exec("PRAGMA foreign_keys = ON;")

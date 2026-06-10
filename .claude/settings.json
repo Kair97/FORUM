@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sqlite3 \"c:\\\\Users\\\\orynb\\\\Desktop\\\\Tomorrow\\\\Forum\\\\forum\\\\volume\\\\database\\\\forum.db\" \"SELECT id, image_path FROM posts WHERE image_path != '';\")",
+      "Bash(sqlite3 \"c:\\\\Users\\\\orynb\\\\Desktop\\\\Tomorrow\\\\Forum\\\\forum\\\\volume\\\\database\\\\forum.db\" \"UPDATE posts SET image_path = REPLACE\\(image_path, '/static/uploads/', '/uploads/'\\) WHERE image_path LIKE '/static/uploads/%';\")"
+    ]
+  }
+}

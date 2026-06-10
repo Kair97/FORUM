@@ -6,6 +6,6 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./database:/app/database
-      - ./web/static/uploads:/app/web/static/uploads
+      - ./volume/database:/app/volume/database
+      - ./volume/uploaded_imgs:/app/volume/uploaded_imgs
     restart: unless-stopped

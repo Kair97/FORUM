@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS likes(
     UNIQUE (user_id, comment_id)
 );
 
-INSERT OR IGNORE INTO categories (name) VALUES 
+INSERT OR IGNORE INTO categories (name) VALUES
     ('General'),
     ('Technology'),
     ('Gaming'),
@@ -73,3 +73,9 @@ INSERT OR IGNORE INTO categories (name) VALUES
     ('Politics'),
     ('Sports'),
     ('Entertainment');
+
+-- Fix image paths that were stored before uploaded images moved to volume/uploaded_imgs.
+-- REPLACE is a no-op when the old prefix is not present, so this is safe to run every startup.
+UPDATE posts
+    SET image_path = REPLACE(image_path, '/static/uploads/', '/uploads/')
+    WHERE image_path LIKE '/static/uploads/%';

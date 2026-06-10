@@ -1,0 +1,20 @@
+# User data — database and uploaded images live on the host and are mounted as volumes.
+# They must NEVER be baked into the Docker image.
+volume/
+
+# Old directories left on the host for reference (now empty).
+data/
+database/
+web/static/uploads/
+
+# Git history is not needed inside the image.
+.git/
+
+# Project docs and deployment scripts — not part of the app.
+*.txt
+*.md
+build.sh
+docker-compose.yml
+
+# Local Go build cache.
+.gocache/

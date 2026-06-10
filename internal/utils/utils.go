@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"forum/internal/middleware"
 	"forum/internal/render"
-	"html/template"
 	"io"
 	"net/http"
 	"os"
@@ -30,33 +29,10 @@ func GetUserID(r *http.Request) (int64, bool) {
 	return userID, ok
 }
 
-// RenderTemplate parses and executes an HTML template.
-// It always includes base.html as the layout wrapper.
-// pagePath is the path to the specific page template.
-// data is passed directly to the template engine.
+// RenderTemplate executes a pre-parsed template from the render package's cache.
+// Templates are parsed once at startup — calling this is just a lookup and execute.
 func RenderTemplate(w http.ResponseWriter, pagePath string, data interface{}) {
-	// We parse base.html + the specific page template together.
-	// The base defines the outer HTML structure.
-	// The page defines the "content" block that goes inside base.
-	tmpl, err := template.ParseFiles(
-		"web/templates/base.html",
-		pagePath,
-	)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Execute runs the template with the provided data and writes
-	// the result directly to the HTTP response writer.
-	// "base.html" refers to the {{define "base"}} block in base.html —
-	// we execute the base which then pulls in the content block.
-	err = tmpl.ExecuteTemplate(w, filepath.Base("web/templates/base.html"), data)
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
+	render.Template(w, pagePath, data)
 }
 
 // Shifting left by 1 is like multiplying by 2.
@@ -120,7 +96,12 @@ func SaveUploadImage(r *http.Request, fieldName string) (string, error) {
 
 	filename := id.String() + ext
 
-	uploadDir := "web/static/uploads"
+	uploadDir := "volume/uploaded_imgs"
+
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create upload directory: %w", err)
+	}
+
 	fullPath := filepath.Join(uploadDir, filename)
 
 	dst, err := os.Create(fullPath)
@@ -135,7 +116,7 @@ func SaveUploadImage(r *http.Request, fieldName string) (string, error) {
 		return "", fmt.Errorf("failed to save the file: %w", err)
 	}
 
-	return "/static/uploads/" + filename, nil
+	return "/uploads/" + filename, nil
 }
 
 func GetRole(r *http.Request) string {
