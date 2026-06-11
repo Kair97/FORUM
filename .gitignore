@@ -1,3 +1,14 @@
 .gocache
-.gitignore 
+.gitignore
 .claude
+
+# Live user data (SQLite DB with emails/password hashes, uploaded images).
+# Mounted into the container at runtime — must never be committed.
+volume/
+
+# Old data locations from before the volume/ refactor.
+# Only stale builds (pre-refactor binary or old docker-compose) create these;
+# current code writes exclusively to volume/.
+database/
+data/
+web/static/uploads/

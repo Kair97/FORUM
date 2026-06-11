@@ -6,6 +6,7 @@ import (
 	"forum/internal/auth"
 	"forum/internal/database"
 	"forum/internal/middleware"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -160,6 +161,42 @@ func TestToggleLikePOSTRejectsExternalRedirect(t *testing.T) {
 	}
 	if location := recorder.Header().Get("Location"); location != "/" {
 		t.Errorf("Location = %q, want %q", location, "/")
+	}
+}
+
+// Regression test: the AJAX voting JS used to send multipart/form-data,
+// which r.ParseForm() silently ignores — the vote returned 400 and was
+// never saved, so likes disappeared on page reload.
+func TestToggleLikePOSTAcceptsMultipartForm(t *testing.T) {
+	db := newTestDB(t)
+	userID := seedUser(t, db, "alice")
+	categoryID := firstCategoryID(t, db)
+	postID := seedPost(t, db, userID, categoryID)
+
+	var body strings.Builder
+	writer := multipart.NewWriter(&body)
+	writer.WriteField("target_type", "post")
+	writer.WriteField("target_id", strconv.FormatInt(postID, 10))
+	writer.WriteField("is_like", "1")
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/like", strings.NewReader(body.String()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req = requestWithUser(req, userID)
+	recorder := httptest.NewRecorder()
+
+	ToggleLikePOST(db)(recorder, req)
+
+	if recorder.Code != http.StatusSeeOther {
+		t.Errorf("status = %d, want %d", recorder.Code, http.StatusSeeOther)
+	}
+
+	exists, isLike, err := database.GetUserLikeStatus(db, userID, postID, "post")
+	if err != nil {
+		t.Fatalf("failed to read like status: %v", err)
+	}
+	if !exists || !isLike {
+		t.Errorf("like not persisted: exists=%v isLike=%v, want true/true", exists, isLike)
 	}
 }
 

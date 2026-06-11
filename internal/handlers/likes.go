@@ -23,7 +23,11 @@ func ToggleLikePOST(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := r.ParseForm(); err != nil {
+		// ParseMultipartForm handles both multipart/form-data and
+		// urlencoded bodies (it falls back to ParseForm internally).
+		// A plain ParseForm would silently skip multipart bodies and
+		// leave every form value empty.
+		if err := r.ParseMultipartForm(1 << 20); err != nil && err != http.ErrNotMultipart {
 			utils.RenderError(w, http.StatusBadRequest)
 			return
 		}

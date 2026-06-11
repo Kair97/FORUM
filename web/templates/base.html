@@ -118,10 +118,18 @@
             }
         }
 
+        // URLSearchParams sends application/x-www-form-urlencoded,
+        // which is what the Go handler's r.ParseForm() expects.
+        // (FormData would send multipart/form-data, which ParseForm ignores.)
         fetch('/like', {
             method: 'POST',
-            body: new FormData(form),
+            body: new URLSearchParams(new FormData(form)),
             redirect: 'manual'
+        }).then(function(res) {
+            // Success is an opaqueredirect (303 back to the page).
+            // A real error status means the vote was NOT saved —
+            // reload so the UI matches the database again.
+            if (res.type !== 'opaqueredirect' && !res.ok) location.reload();
         }).catch(function() { location.reload(); });
     });
 </script>
